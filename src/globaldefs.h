@@ -137,8 +137,9 @@ typedef struct {
     int nquadSteps;
     int ngausslegpoints;
     real epsquad;
-    
+
     int chatty;
+    int rmin0;  // Force rmin=0 for testing
 //
 } cmdline_data, *cmdline_data_ptr;
 

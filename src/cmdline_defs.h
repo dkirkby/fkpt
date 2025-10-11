@@ -44,6 +44,8 @@ string defv[] = {  ";"HEAD1": " HEAD2 "\n\t " HEAD3,
     "kmax=0.5",                     ";kmax in output",
     "Nk=120",                       ";Total number of output",":nk",
     "nquadSteps=300",               ";Number of internal momenta p loop quadratures (trapezoid)",":nquad",
+// debugging/testing options
+    "rmin0=0",                      ";Force rmin=0 for testing (0=use kmin/ki, 1=force zero)",
 // model
     "model=LCDM",                  ";LCDM, HS, DGP, HORN",":m",    
     "fR0=1.0e-10",                 "; HS fR0 parameter",":fr0",

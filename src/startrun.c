@@ -73,6 +73,7 @@ stream outparams;
 
 
     cmd.chatty = GetiParam("chatty");
+    cmd.rmin0 = GetiParam("rmin0");
 
 // bias and counterterms
     cmd.b1 = GetdParam("b1");
