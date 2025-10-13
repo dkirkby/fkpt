@@ -137,8 +137,10 @@ typedef struct {
     int nquadSteps;
     int ngausslegpoints;
     real epsquad;
-    
+
     int chatty;
+// HDF5 dump:
+    string dumpKfunctions;
 //
 } cmdline_data, *cmdline_data_ptr;
 

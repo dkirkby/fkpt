@@ -30,6 +30,9 @@ local real sigma_constants(void);
 #define KMIN    1.0e-20
 #define _KERNELS_LCDMfk_ 0
 
+// Forward declaration for HDF5 dump
+local void dump_kfunctions_hdf5(const char *filename);
+
 global void compute_kfunctions(void)
 {
     stream outstrQsRs, outtables;
@@ -105,6 +108,17 @@ global void compute_kfunctions(void)
         fprintf(stdout,"  TOTAL:              %8.3f s\n",
                 t_init+t_sigma8+t_sigma_const+t_kfunc_loop);
         fprintf(stdout,"------------------------------------\n");
+    }
+
+    // HDF5 dump if requested
+    if (!strnull(cmd.dumpKfunctions)) {
+        if(cmd.chatty==1) {
+            fprintf(stdout,"\nDumping k-functions snapshot to HDF5 file: %s\n", cmd.dumpKfunctions);
+        }
+        dump_kfunctions_hdf5(cmd.dumpKfunctions);
+        if(cmd.chatty==1) {
+            fprintf(stdout,"HDF5 dump completed.\n");
+        }
     }
 
 }
@@ -1004,6 +1018,326 @@ local real get_sigma8(void)
 				qromo(sigma28_function_int,ymin,ymaxSigma,midpnt,EPSQ,KK);
 	gd.sigma8 = rsqrt(sigma28);
 };
+
+
+// HDF5 dump implementation
+#ifdef USE_HDF5
+#include <hdf5.h>
+#include <time.h>
+
+local void dump_kfunctions_hdf5(const char *filename)
+{
+    hid_t file_id, group_id, dataset_id, dataspace_id, attr_id, attrspace_id;
+    hsize_t dims[2];
+    herr_t status;
+    int i;
+    time_t current_time;
+    char time_str[100];
+
+    // Create HDF5 file
+    file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    if (file_id < 0) {
+        fprintf(stderr, "Error: Could not create HDF5 file %s\n", filename);
+        return;
+    }
+
+    // Get current timestamp
+    time(&current_time);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&current_time));
+
+    // Create metadata group
+    group_id = H5Gcreate(file_id, "/metadata", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    attrspace_id = H5Screate(H5S_SCALAR);
+
+    // Store timestamp
+    hid_t str_type = H5Tcopy(H5T_C_S1);
+    H5Tset_size(str_type, strlen(time_str) + 1);
+    attr_id = H5Acreate(group_id, "timestamp", str_type, attrspace_id, H5P_DEFAULT, H5P_DEFAULT);
+    H5Awrite(attr_id, str_type, time_str);
+    H5Aclose(attr_id);
+
+    // Store command line info (reconstructed from parameters)
+    char cmdline[512];
+    snprintf(cmdline, sizeof(cmdline), "Om=%.4f h=%.4f model=%s fR0=%.3e zout=%.2f fnamePS=%s",
+             cmd.om, cmd.h, cmd.mgmodel, cmd.fR0, cmd.xstop, cmd.fnamePS);
+    H5Tset_size(str_type, strlen(cmdline) + 1);
+    attr_id = H5Acreate(group_id, "command_line", str_type, attrspace_id, H5P_DEFAULT, H5P_DEFAULT);
+    H5Awrite(attr_id, str_type, cmdline);
+    H5Aclose(attr_id);
+    H5Tclose(str_type);
+
+    H5Sclose(attrspace_id);
+    H5Gclose(group_id);
+
+    // Create parameters group
+    group_id = H5Gcreate(file_id, "/parameters", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // Cosmology subgroup
+    hid_t cosmo_group = H5Gcreate(group_id, "cosmology", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_SCALAR(name, value) \
+        dataset_id = H5Dcreate(cosmo_group, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value); \
+        H5Dclose(dataset_id);
+
+    WRITE_SCALAR("Om", cmd.om);
+    WRITE_SCALAR("h", cmd.h);
+    WRITE_SCALAR("zout", cmd.xstop);
+    WRITE_SCALAR("f0", gd.f0);
+    WRITE_SCALAR("Dplus", gd.Dplus);
+
+    #undef WRITE_SCALAR
+    H5Sclose(dataspace_id);
+    H5Gclose(cosmo_group);
+
+    // Model subgroup
+    hid_t model_group = H5Gcreate(group_id, "model", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    str_type = H5Tcopy(H5T_C_S1);
+    H5Tset_size(str_type, strlen(cmd.mgmodel) + 1);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+    dataset_id = H5Dcreate(model_group, "mgmodel", str_type, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dataset_id, str_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cmd.mgmodel);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+    H5Tclose(str_type);
+
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+    dataset_id = H5Dcreate(model_group, "fR0", H5T_NATIVE_DOUBLE, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cmd.fR0);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+    H5Gclose(model_group);
+
+    // k_grid subgroup
+    hid_t kgrid_group = H5Gcreate(group_id, "k_grid", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_SCALAR_KGRID(name, value) \
+        dataset_id = H5Dcreate(kgrid_group, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value); \
+        H5Dclose(dataset_id);
+
+    WRITE_SCALAR_KGRID("kmin", cmd.kmin);
+    WRITE_SCALAR_KGRID("kmax", cmd.kmax);
+
+    #undef WRITE_SCALAR_KGRID
+
+    dataset_id = H5Dcreate(kgrid_group, "Nk", H5T_NATIVE_INT, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cmd.Nk);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+    H5Gclose(kgrid_group);
+
+    // Numerical parameters subgroup
+    hid_t numerical_group = H5Gcreate(group_id, "numerical", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+    dataset_id = H5Dcreate(numerical_group, "nquadSteps", H5T_NATIVE_INT, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cmd.nquadSteps);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+    H5Gclose(numerical_group);
+
+    // Kernels subgroup
+    hid_t kernels_group = H5Gcreate(group_id, "kernels", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_KERNEL(name, value) \
+        dataset_id = H5Dcreate(kernels_group, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value); \
+        H5Dclose(dataset_id);
+
+    WRITE_KERNEL("KA_LCDM", KA_LCDM);
+    WRITE_KERNEL("KAp_LCDM", KAp_LCDM);
+    WRITE_KERNEL("KB_LCDM", KB_LCDM);
+    WRITE_KERNEL("KR1_LCDM", KR1_LCDM);
+    WRITE_KERNEL("KR1p_LCDM", KR1p_LCDM);
+
+    #undef WRITE_KERNEL
+    H5Sclose(dataspace_id);
+    H5Gclose(kernels_group);
+    H5Gclose(group_id);
+
+    // Create sigma_values group
+    group_id = H5Gcreate(file_id, "/sigma_values", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = 1;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_SIGMA(name, value) \
+        dataset_id = H5Dcreate(group_id, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value); \
+        H5Dclose(dataset_id);
+
+    WRITE_SIGMA("sigma8", gd.sigma8);
+    WRITE_SIGMA("sigma2L", gd.sigma2L);
+    WRITE_SIGMA("sigma2v", gd.sigma2v);
+    WRITE_SIGMA("Sigma2", gd.Sigma2);
+    WRITE_SIGMA("deltaSigma2", gd.deltaSigma2);
+
+    #undef WRITE_SIGMA
+    H5Sclose(dataspace_id);
+    H5Gclose(group_id);
+
+    // Create inputs group - store linear power spectra
+    group_id = H5Gcreate(file_id, "/inputs", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // Wiggle power spectrum: k, P(k), P''(k), f(k)
+    dims[0] = nPSLT;
+    dims[1] = 4;
+    dataspace_id = H5Screate_simple(2, dims, NULL);
+    dataset_id = H5Dcreate(group_id, "linear_ps_wiggle", H5T_NATIVE_DOUBLE, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    double *ps_wiggle = (double *)malloc(nPSLT * 4 * sizeof(double));
+    for (i = 0; i < nPSLT; i++) {
+        ps_wiggle[i*4 + 0] = kPS[i+1];
+        ps_wiggle[i*4 + 1] = pPS[i+1];
+        ps_wiggle[i*4 + 2] = pPS2[i+1];
+        ps_wiggle[i*4 + 3] = fkT[i+1];
+    }
+    H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, ps_wiggle);
+    free(ps_wiggle);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+
+    // No-wiggle power spectrum
+    dataspace_id = H5Screate_simple(2, dims, NULL);
+    dataset_id = H5Dcreate(group_id, "linear_ps_nowiggle", H5T_NATIVE_DOUBLE, dataspace_id,
+                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    double *ps_nowiggle = (double *)malloc(nPSLT * 4 * sizeof(double));
+    for (i = 0; i < nPSLT; i++) {
+        ps_nowiggle[i*4 + 0] = kPS[i+1];
+        ps_nowiggle[i*4 + 1] = pPS_nw[i+1];
+        ps_nowiggle[i*4 + 2] = pPS2_nw[i+1];
+        ps_nowiggle[i*4 + 3] = fkT[i+1];
+    }
+    H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, ps_nowiggle);
+    free(ps_nowiggle);
+    H5Dclose(dataset_id);
+    H5Sclose(dataspace_id);
+    H5Gclose(group_id);
+
+    // Create outputs group
+    group_id = H5Gcreate(file_id, "/outputs", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // Wiggle k-functions
+    hid_t kfunc_wiggle = H5Gcreate(group_id, "kfunctions_wiggle", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = cmd.Nk;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_ARRAY(name, array) \
+        dataset_id = H5Dcreate(kfunc_wiggle, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, array); \
+        H5Dclose(dataset_id);
+
+    WRITE_ARRAY("k", kFArrays.kT);
+    WRITE_ARRAY("P22dd", kFArrays.P22ddT);
+    WRITE_ARRAY("P22du", kFArrays.P22duT);
+    WRITE_ARRAY("P22uu", kFArrays.P22uuT);
+    WRITE_ARRAY("I1udd1A", kFArrays.I1udd1AT);
+    WRITE_ARRAY("I2uud1A", kFArrays.I2uud1AT);
+    WRITE_ARRAY("I2uud2A", kFArrays.I2uud2AT);
+    WRITE_ARRAY("I3uuu2A", kFArrays.I3uuu2AT);
+    WRITE_ARRAY("I3uuu3A", kFArrays.I3uuu3AT);
+    WRITE_ARRAY("I2uudd1BpC", kFArrays.I2uudd1BpCT);
+    WRITE_ARRAY("I2uudd2BpC", kFArrays.I2uudd2BpCT);
+    WRITE_ARRAY("I3uuud2BpC", kFArrays.I3uuud2BpCT);
+    WRITE_ARRAY("I3uuud3BpC", kFArrays.I3uuud3BpCT);
+    WRITE_ARRAY("I4uuuu2BpC", kFArrays.I4uuuu2BpCT);
+    WRITE_ARRAY("I4uuuu3BpC", kFArrays.I4uuuu3BpCT);
+    WRITE_ARRAY("I4uuuu4BpC", kFArrays.I4uuuu4BpCT);
+    WRITE_ARRAY("Pb1b2", kFArrays.Pb1b2T);
+    WRITE_ARRAY("Pb1bs2", kFArrays.Pb1bs2T);
+    WRITE_ARRAY("Pb22", kFArrays.Pb22T);
+    WRITE_ARRAY("Pb2s2", kFArrays.Pb2s2T);
+    WRITE_ARRAY("Ps22", kFArrays.Ps22T);
+    WRITE_ARRAY("Pb2theta", kFArrays.Pb2thetaT);
+    WRITE_ARRAY("Pbs2theta", kFArrays.Pbs2thetaT);
+    WRITE_ARRAY("P13dd", kFArrays.P13ddT);
+    WRITE_ARRAY("P13du", kFArrays.P13duT);
+    WRITE_ARRAY("P13uu", kFArrays.P13uuT);
+    WRITE_ARRAY("sigma32PSL", kFArrays.sigma32PSLT);
+    WRITE_ARRAY("pkl", kFArrays.pklT);
+    WRITE_ARRAY("fk", kFArrays.fkT);
+
+    #undef WRITE_ARRAY
+    H5Sclose(dataspace_id);
+    H5Gclose(kfunc_wiggle);
+
+    // No-wiggle k-functions
+    hid_t kfunc_nowiggle = H5Gcreate(group_id, "kfunctions_nowiggle", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dims[0] = cmd.Nk;
+    dataspace_id = H5Screate_simple(1, dims, NULL);
+
+    #define WRITE_ARRAY_NW(name, array) \
+        dataset_id = H5Dcreate(kfunc_nowiggle, name, H5T_NATIVE_DOUBLE, dataspace_id, \
+                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); \
+        H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, array); \
+        H5Dclose(dataset_id);
+
+    WRITE_ARRAY_NW("k", kFArrays_nw.kT);
+    WRITE_ARRAY_NW("P22dd", kFArrays_nw.P22ddT);
+    WRITE_ARRAY_NW("P22du", kFArrays_nw.P22duT);
+    WRITE_ARRAY_NW("P22uu", kFArrays_nw.P22uuT);
+    WRITE_ARRAY_NW("I1udd1A", kFArrays_nw.I1udd1AT);
+    WRITE_ARRAY_NW("I2uud1A", kFArrays_nw.I2uud1AT);
+    WRITE_ARRAY_NW("I2uud2A", kFArrays_nw.I2uud2AT);
+    WRITE_ARRAY_NW("I3uuu2A", kFArrays_nw.I3uuu2AT);
+    WRITE_ARRAY_NW("I3uuu3A", kFArrays_nw.I3uuu3AT);
+    WRITE_ARRAY_NW("I2uudd1BpC", kFArrays_nw.I2uudd1BpCT);
+    WRITE_ARRAY_NW("I2uudd2BpC", kFArrays_nw.I2uudd2BpCT);
+    WRITE_ARRAY_NW("I3uuud2BpC", kFArrays_nw.I3uuud2BpCT);
+    WRITE_ARRAY_NW("I3uuud3BpC", kFArrays_nw.I3uuud3BpCT);
+    WRITE_ARRAY_NW("I4uuuu2BpC", kFArrays_nw.I4uuuu2BpCT);
+    WRITE_ARRAY_NW("I4uuuu3BpC", kFArrays_nw.I4uuuu3BpCT);
+    WRITE_ARRAY_NW("I4uuuu4BpC", kFArrays_nw.I4uuuu4BpCT);
+    WRITE_ARRAY_NW("Pb1b2", kFArrays_nw.Pb1b2T);
+    WRITE_ARRAY_NW("Pb1bs2", kFArrays_nw.Pb1bs2T);
+    WRITE_ARRAY_NW("Pb22", kFArrays_nw.Pb22T);
+    WRITE_ARRAY_NW("Pb2s2", kFArrays_nw.Pb2s2T);
+    WRITE_ARRAY_NW("Ps22", kFArrays_nw.Ps22T);
+    WRITE_ARRAY_NW("Pb2theta", kFArrays_nw.Pb2thetaT);
+    WRITE_ARRAY_NW("Pbs2theta", kFArrays_nw.Pbs2thetaT);
+    WRITE_ARRAY_NW("P13dd", kFArrays_nw.P13ddT);
+    WRITE_ARRAY_NW("P13du", kFArrays_nw.P13duT);
+    WRITE_ARRAY_NW("P13uu", kFArrays_nw.P13uuT);
+    WRITE_ARRAY_NW("sigma32PSL", kFArrays_nw.sigma32PSLT);
+    WRITE_ARRAY_NW("pkl", kFArrays_nw.pklT);
+    WRITE_ARRAY_NW("fk", kFArrays_nw.fkT);
+
+    #undef WRITE_ARRAY_NW
+    H5Sclose(dataspace_id);
+    H5Gclose(kfunc_nowiggle);
+    H5Gclose(group_id);
+
+    // Close the file
+    H5Fclose(file_id);
+}
+
+#else
+// Stub function if HDF5 is not available
+local void dump_kfunctions_hdf5(const char *filename)
+{
+    fprintf(stderr, "ERROR: HDF5 support not compiled. Rebuild with -DUSE_HDF5 and link with -lhdf5\n");
+    error("HDF5 dump requested but not available\n");
+}
+#endif
 
 
 

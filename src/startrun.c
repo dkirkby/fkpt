@@ -73,6 +73,8 @@ stream outparams;
 
 
     cmd.chatty = GetiParam("chatty");
+// HDF5 dump:
+    cmd.dumpKfunctions = GetParam("dumpKfunctions");
 
 // bias and counterterms
     cmd.b1 = GetdParam("b1");

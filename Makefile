@@ -19,12 +19,20 @@ CC = gcc
 
 # Default CFLAGS:
 #~ INCLUDES    =  -I ./ -I ./libs/
-CFLAGS = -g -O3 $(OPTIONS)
+#CFLAGS = -g -O3 $(OPTIONS)
 #
 # With OpenMP:
 #CFLAGS = -g -O3 -fopenmp $(OPTIONS)
 # For icc use instead:
 #CFLAGS = -g -O3 -qopenmp $(OPTIONS)
+#
+# With HDF5 support (for k-functions snapshot dump):
+# For conda environment:
+CFLAGS = -g -O3 -DUSE_HDF5 -I$(CONDA_PREFIX)/include $(OPTIONS)
+# For macOS with Homebrew HDF5:
+#CFLAGS = -g -O3 -DUSE_HDF5 -I/usr/local/opt/hdf5/include $(OPTIONS)
+# For Linux, you may need:
+#CFLAGS = -g -O3 -DUSE_HDF5 -I/usr/include/hdf5/serial $(OPTIONS)
 
 
 #
@@ -55,10 +63,20 @@ INCL	= $(S_PATH)/globaldefs.h $(S_PATH)/cmdline_defs.h \
 	$(H_PATH)/inout.h $(H_PATH)/mathutil.h \
 	$(H_PATH)/switchs.h $(H_PATH)/quads.h
 
-#~ $(EXEC): $(OBJS) 
+# Linker flags
+# For conda environment with HDF5 (macOS needs rpath):
+LDFLAGS = -lm -L$(CONDA_PREFIX)/lib -lhdf5 -Wl,-rpath,$(CONDA_PREFIX)/lib
+# For macOS with Homebrew HDF5:
+#LDFLAGS = -lm -L/usr/local/opt/hdf5/lib -lhdf5 -Wl,-rpath,/usr/local/opt/hdf5/lib
+# For Linux with serial HDF5:
+#LDFLAGS = -lm -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5
+# Without HDF5 support:
+#LDFLAGS = -lm
+
+#~ $(EXEC): $(OBJS)
 #~ 	($(CC) $(OBJS) $(LIBS) $(CFLAGS) -o $@ -lm; cp $(EXEC) ../)
-$(EXEC): $(OBJS) 
-	($(CC) $(OBJS) $(LIBS) $(CFLAGS) -o $@ -lm)
+$(EXEC): $(OBJS)
+	($(CC) $(OBJS) $(LIBS) $(CFLAGS) -o $@ $(LDFLAGS))
 
 $(OBJS): $(INCL)
 

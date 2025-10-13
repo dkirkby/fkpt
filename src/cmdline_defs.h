@@ -51,6 +51,8 @@ string defv[] = {  ";"HEAD1": " HEAD2 "\n\t " HEAD3,
     "modelParamfile=",              ";If mgmodel=USER, to use the model in models_user.h", ":mpf",
 // chatty
     "chatty=1",                    ";=0 for displays no output in terminal. =3 displays sigma8(z=zout)",
+// HDF5 dump
+    "dumpKfunctions=",             ";If set, dump complete k-functions snapshot to HDF5 file at this path", ":dump",
     NULL,
 };
 
