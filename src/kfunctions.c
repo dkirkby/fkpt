@@ -221,14 +221,14 @@ local void k_functions(void)
         t_total_loop += t_per_k;
 
         if (cmd.chatty==1 && (i==1 || i==cmd.Nk || i%20==0)) {
-            fprintf(stdout,"\n  k[%3d/%3d]: k=%9.6f, time=%7.3f s, avg=%7.3f s/k",
-                    i, cmd.Nk, ki, t_per_k, t_total_loop/i);
+            fprintf(stdout,"\n  k[%3d/%3d]: k=%9.6f, time=%7.3f ms, avg=%7.3f ms/k",
+                    i, cmd.Nk, ki, 1e3*t_per_k, 1e3*t_total_loop/i);
         }
     }
 
     if(cmd.chatty==1) {
-        fprintf(stdout,"\n  Total k-loop time: %8.3f s, avg per k: %7.3f s\n",
-                t_total_loop, t_total_loop/cmd.Nk);
+        fprintf(stdout,"\n  Total k-loop time: %8.3f ms, avg per k: %7.3f ms\n",
+                1e3*t_total_loop, 1e3*t_total_loop/cmd.Nk);
     }
 }
 
@@ -746,8 +746,8 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
 
     // Optional detailed timing output (controlled by chatty==2 for extra verbosity)
     if(cmd.chatty >= 2) {
-        fprintf(stdout,"\n    ki=%9.6f: Q-loop=%5.2fs, R-loop=%5.2fs",
-                ki, t_q_loop, t_r_loop);
+        fprintf(stdout,"\n    ki=%9.6f: Q-loop=%5.2fms, R-loop=%5.2fms",
+                ki, 1e3*t_q_loop, 1e3*t_r_loop);
     }
 
     return *QRstmp;
