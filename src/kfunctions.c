@@ -34,7 +34,7 @@ global void compute_kfunctions(void)
 {
     stream outstrQsRs, outtables;
     real dk;
-    real bTime;
+    real bTime, t_start, t_init, t_sigma8, t_sigma_const, t_kfunc_loop;
     real kBAOmin=0.005, kBAOmax=1.0, epsquadsave;
     int iBAOmin, iBAOmax;
     global_D2v2_ptr ptmp;
@@ -47,6 +47,7 @@ global void compute_kfunctions(void)
 
     // gd.f0=f_growth_LCDM();  //Modificacion
 
+    t_start = second();
     ptmp = DsSecondOrder_func(KMIN, KMIN, KMIN);
     KA_LCDM = DA2D2(ptmp) / ( (3.0/7.0) * Dpk1D2(ptmp) * Dpk2D2(ptmp) );
     KAp_LCDM = DA2primeD2(ptmp)
@@ -60,12 +61,16 @@ global void compute_kfunctions(void)
         /( DpkD3(ptmpR1)*DppD3(ptmpR1)*DppD3(ptmpR1) );
     KR1p_LCDM = (21.0/5.0)*D3symmprimeD3(ptmpR1)
         /( DpkD3(ptmpR1)*DppD3(ptmpR1)*DppD3(ptmpR1) )/(3.*gd.f0);
+    t_init = second() - t_start;
 
+    t_start = second();
 	get_sigma8();
 	if(cmd.chatty==3) fprintf(stdout,"%g\n",gd.sigma8);
+    t_sigma8 = second() - t_start;
 
-
+    t_start = second();
     sigma_constants();
+    t_sigma_const = second() - t_start;
 
     if(cmd.chatty==1){
 		fprintf(stdout,"\nA_LCDM=%g, Ap_LCDM=%g, KR1_LCDM = %g, KR1p_LCDM = %g"
@@ -81,10 +86,26 @@ global void compute_kfunctions(void)
 		//~ fprintf(stdout,"\nsigma8(z=%g)=%g \n",cmd.xstop,gd.sigma8);
     };
 
+    t_start = second();
     k_functions();
+    t_kfunc_loop = second() - t_start;
 
 
-    if(cmd.chatty==1) fprintf(stdout,"\n...time = %g seconds",second()-bTime);
+    if(cmd.chatty==1) {
+        fprintf(stdout,"\n...time = %g seconds",second()-bTime);
+        fprintf(stdout,"\n\n--- compute_kfunctions breakdown ---\n");
+        fprintf(stdout,"  Initialization:     %8.3f s (%5.1f%%)\n",
+                t_init, 100.0*t_init/(t_init+t_sigma8+t_sigma_const+t_kfunc_loop));
+        fprintf(stdout,"  sigma8 calculation: %8.3f s (%5.1f%%)\n",
+                t_sigma8, 100.0*t_sigma8/(t_init+t_sigma8+t_sigma_const+t_kfunc_loop));
+        fprintf(stdout,"  sigma constants:    %8.3f s (%5.1f%%)\n",
+                t_sigma_const, 100.0*t_sigma_const/(t_init+t_sigma8+t_sigma_const+t_kfunc_loop));
+        fprintf(stdout,"  k-functions loop:   %8.3f s (%5.1f%%)\n",
+                t_kfunc_loop, 100.0*t_kfunc_loop/(t_init+t_sigma8+t_sigma_const+t_kfunc_loop));
+        fprintf(stdout,"  TOTAL:              %8.3f s\n",
+                t_init+t_sigma8+t_sigma_const+t_kfunc_loop);
+        fprintf(stdout,"------------------------------------\n");
+    }
 
 }
 #undef KMIN
@@ -100,6 +121,7 @@ local void k_functions(void)
     //~ int counter;
     int i;
     real dk;
+    real t_start_k, t_per_k, t_total_loop = 0.0;
     if (_K_LOGSPACED_ ==1){
 		dk = (rlog10(cmd.kmax/cmd.kmin))/((real)(cmd.Nk - 1));
 	} else {
@@ -107,6 +129,7 @@ local void k_functions(void)
 	}
 
     for (i=1; i<=cmd.Nk; i++) {
+        t_start_k = second();
 		if (_K_LOGSPACED_ ==1){
 			kval = rlog10(cmd.kmin) + dk*((real)(i - 1));
 			ki = rpow(10.0,kval);
@@ -193,6 +216,19 @@ local void k_functions(void)
 		kFArrays_nw.fkT[i-1]          =  fk;
 
 		//~ fprintf(stdout,"(k=%e, f=%e), ",ki,kFArrays.fkT[i-1]);
+
+        t_per_k = second() - t_start_k;
+        t_total_loop += t_per_k;
+
+        if (cmd.chatty==1 && (i==1 || i==cmd.Nk || i%20==0)) {
+            fprintf(stdout,"\n  k[%3d/%3d]: k=%9.6f, time=%7.3f s, avg=%7.3f s/k",
+                    i, cmd.Nk, ki, t_per_k, t_total_loop/i);
+        }
+    }
+
+    if(cmd.chatty==1) {
+        fprintf(stdout,"\n  Total k-loop time: %8.3f s, avg per k: %7.3f s\n",
+                t_total_loop, t_total_loop/cmd.Nk);
     }
 }
 
@@ -216,6 +252,7 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
 {
     int i, j;
     real pkl_k;
+    real t_q_start, t_q_loop = 0.0, t_r_loop = 0.0;
 
     real PSLA, PSLB, psl;
 	real fk, fp, fkmp, pklp, pklkmp;
@@ -316,6 +353,7 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
 
 // Q functions
 
+    t_q_start = second();
     PSLA = 0.0;
     rmax = kmax/ki;
     rmin = kmin/ki;
@@ -535,9 +573,11 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
     free_dvector(wwGL,1,Nx);
     free_dvector(xxGL,1,Nx);
 
+    t_q_loop = second() - t_q_start;
+
 //  R functions
 
-
+    t_q_start = second();  // reuse variable for R-loop start time
 
     nGL=10;
     xGL=dvector(1,nGL);
@@ -701,6 +741,14 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
 
     free_dvector(dkk,1,cmd.nquadSteps);
     free_dvector(kk,1,cmd.nquadSteps);
+
+    t_r_loop = second() - t_q_start;
+
+    // Optional detailed timing output (controlled by chatty==2 for extra verbosity)
+    if(cmd.chatty >= 2) {
+        fprintf(stdout,"\n    ki=%9.6f: Q-loop=%5.2fs, R-loop=%5.2fs",
+                ki, t_q_loop, t_r_loop);
+    }
 
     return *QRstmp;
 }
