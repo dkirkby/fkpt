@@ -614,6 +614,7 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
             x2 =x*x;
             y2=1.0 + r2 - 2.0 * r * x;
 
+
 			Gamma2evR  = A *(1. - x2);
 			Gamma2fevR = A *(1. - x2)*(fk + fp)/2. + 1./2. * ApOverf0 *(1 - x2);
 
@@ -681,8 +682,6 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
         I3uuu2a_p   += dkk[i]*(I3uuu2a_A + I3uuu2a_B) /  (2.0*ki);
         I3uuu3a_p   += dkk[i]*(I3uuu3a_A + I3uuu3a_B) /  (2.0*ki);
 
-        printf("i=%d I33uu3a=%.9g\n", i, I3uuu3a_p);
-
         P13dd_A =   P13dd_B;      P13dd_B = 0.0;
         P13du_A =   P13du_B;      P13du_B = 0.0;
         P13uu_A =   P13uu_B;      P13uu_B = 0.0;
@@ -695,8 +694,6 @@ global_kFs ki_functions(real ki, double kPKL[], double pPKL[], int nPKLT, double
         I3uuu3a_A =   I3uuu3a_B;      I3uuu3a_B = 0.0;
 
     }
-
-    exit(-1);
 
     pkl_k = Interpolation_nr(ki, kPKL, pPKL, nPKLT, pPKL2);
     P13dd_p      *= (rpow(ki,3.0)/FOURPI2)*pkl_k;
@@ -1103,7 +1100,7 @@ local void dump_kfunctions_hdf5(const char *filename)
     dataspace_id = H5Screate_simple(1, dims, NULL);
     dataset_id = H5Dcreate(model_group, "mgmodel", str_type, dataspace_id,
                            H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    H5Dwrite(dataset_id, str_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cmd.mgmodel);
+    H5Dwrite(dataset_id, str_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, cmd.mgmodel);
     H5Dclose(dataset_id);
     H5Sclose(dataspace_id);
     H5Tclose(str_type);
