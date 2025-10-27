@@ -8,11 +8,42 @@ from fkpt.snapshot import KFunctionsSnapshot, load_snapshot
 from fkpt.calculate4 import calculator4
 
 
+def init_cubic_spline(x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
+    """Initialize a cubic spline interpolator by precomputing 2nd derivatives."""
+    n = len(x)
+    y = np.moveaxis(y, -1, 0)
+    y2 = np.zeros_like(y)
+    u = np.zeros_like(y)
+    # Forward sweep
+    for i in range(1, n-1):
+        sig = (x[i] - x[i-1]) / (x[i+1] - x[i-1])
+        p = sig * y2[i-1] + 2.0
+        y2[i] = (sig - 1.0) / p
+        udiff = (y[i+1] - y[i]) / (x[i+1] - x[i]) - (y[i] - y[i-1]) / (x[i] - x[i-1])
+        u[i] = (6.0 * udiff / (x[i+1] - x[i-1]) - sig * u[i-1]) / p
+    # Back substitution
+    for k in range(n-2, -1, -1):
+        y2[k] = y2[k] * y2[k+1] + u[k if k < n-1 else n-2]
+    return np.moveaxis(y2, 0, -1)
+
+def eval_cubic_spline(xa: Float64NDArray, ya: Float64NDArray, y2a: Float64NDArray, x: Float64NDArray) -> Float64NDArray:
+    """Evaluate the cubic spline interpolator at given x values assuming xa increasing."""
+    idx_hi = np.searchsorted(xa, x, side='right')
+    idx_hi = np.clip(idx_hi, 1, xa.size - 1)
+    idx_lo = idx_hi - 1
+    h = xa[idx_hi] - xa[idx_lo]
+    a = (xa[idx_hi] - x) / h
+    b = (x - xa[idx_lo]) / h
+    print(a.shape, ya[...,idx_lo].shape)
+    return (a * ya[...,idx_lo] + b * ya[...,idx_hi] +
+            ((a**3 - a) * y2a[...,idx_lo] + (b**3 - b) * y2a[...,idx_hi]) * (h**2) / 6.0)
+
+
 def init_kfunctions(
         k_in: Float64NDArray, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray, fk_in: Float64NDArray,
         f0: float, sigma2v: float,
         kmin: int, kmax: int, Nk: int,
-        nquadSteps: int=10, NQ: int=10, NR: int=10
+        nquadSteps: int, NQ: int=10, NR: int=10
         ) -> KFunctionsIn:
 
     # Initialize cubic spline interpolator

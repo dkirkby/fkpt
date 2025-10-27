@@ -1,4 +1,4 @@
 src/*.o
-fkpt
+/fkpt
 
 __pycache__
