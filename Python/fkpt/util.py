@@ -3,8 +3,7 @@ import numpy as np
 from scipy.special import roots_legendre
 
 from fkpt.types import Float64NDArray, KFunctionsIn, KFunctionsOut, KFunctionsCalculator
-from fkpt.snapshot import KFunctionsSnapshot, load_snapshot
-from fkpt.calculate4 import calculator4
+from fkpt.snapshot import KFunctionsSnapshot
 
 
 def init_cubic_spline(x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
@@ -40,8 +39,9 @@ def eval_cubic_spline(xa: Float64NDArray, ya: Float64NDArray, y2a: Float64NDArra
 
 
 def init_kfunctions(
-        k_in: Float64NDArray, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray, fk_in: Float64NDArray,
-        f0: float, sigma2v: float,
+        k_in: Float64NDArray,
+        Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray,
+        fk_in: Float64NDArray, f0: float,
         kmin: int, kmax: int, Nk: int,
         nquadSteps: int, NQ: int=10, NR: int=10
         ) -> KFunctionsIn:
@@ -49,38 +49,24 @@ def init_kfunctions(
     # Initialize simultaneous cubic spline interpolation for Y(k) = [P(k), P_nw(k), f(k)]
     # by precomputing 2nd derivatives Y2(k)
     X = k_in
-    Y = np.vstack([Pk_in, Pk_nw_in, fk_in])
+    Y = np.vstack([Pk_in, Pk_nw_in, fk_in / f0])
     Y2 = init_cubic_spline(X, Y)
-    def interpolator(x: Float64NDArray) -> Float64NDArray:
-        return eval_cubic_spline(X, Y, Y2, x)
 
     # Initialize logarithmic output k grid
     logk_grid = np.geomspace(kmin, kmax, Nk)
-
-    # Precompute f(k) on output k grid
-    Pout, _, fout = interpolator(logk_grid).T
-    fout /= f0  # Normalize f(k) by f0
 
     # Set up quadrature k grid
     pmin = max(k_in[0], 0.01 * kmin)
     pmax = min(k_in[-1], 16.0 * kmax)
     kk_grid = np.geomspace(pmin, pmax, nquadSteps)
 
-    # Precompute P(k) and f(k) on quadrature grid
-    Pkk, Pkk_nw, fkk = interpolator(kk_grid).T
-    fkk /= f0  # Normalize f(k) by f0
-
     # Initialize Gauss-Legendre nodes and weights on [-1,1]
     xxQ, wwQ = roots_legendre(NQ)
     xxR, wwR = roots_legendre(NR)
 
     return KFunctionsIn(
-        k_in[0], k_in[-1],
-        logk_grid, Pout, fout,
-        f0, sigma2v,
-        kk_grid, Pkk, Pkk_nw, fkk,
+        k_in, logk_grid, kk_grid, Y, Y2,
         xxQ, wwQ, xxR, wwR,
-        interpolator
     )
 
 def validate_kfunctions(
@@ -155,7 +141,7 @@ def measure_kfunctions(
     NR = 10
     kfuncs_in = init_kfunctions(
         k_in, Pk_in, Pk_nw_in, fk_in,
-        f0, sigma2v,
+        f0,
         kmin, kmax, Nk,
         nquadSteps, NQ, NR
     )
@@ -173,24 +159,10 @@ def measure_kfunctions(
         CFD3p = 1
 
     # Calculate k-functions
-    kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p)
+    kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v)
 
     # Validate results
     if validate_kfunctions(kfuncs_out, snapshot):
         print("K-functions validated successfully against the snapshot!")
     else:
-        warnings.warn("K-functions validation failed!")
-
-
-if __name__ == "__main__":
-    import warnings
-
-    # Example usage
-    SNAPSHOT_FILE = '../kfunctions_snapshot_new.h5'
-
-    print(f"Loading snapshot from: {SNAPSHOT_FILE}")
-    snapshot = load_snapshot(SNAPSHOT_FILE)
-    print("Snapshot loaded successfully!")
-
-    # Measure k-functions using calculator4
-    measure_kfunctions(calculator4, snapshot)
+        print("K-functions validation failed!")

@@ -1,19 +1,28 @@
 import numpy as np
 
-from fkpt.types import KFunctionsIn, KFunctionsOut
+from fkpt.types import KFunctionsIn, KFunctionsOut, Float64NDArray
+from fkpt.util import eval_cubic_spline
 
 
-def calculator4(kfuncs_in: KFunctionsIn, A: float, ApOverf0: float, CFD3: float, CFD3p: float) -> KFunctionsOut:
+def calculator4(
+        kfuncs_in: KFunctionsIn,
+        A: float, ApOverf0: float, CFD3: float, CFD3p: float, sigma2v: float
+    ) -> KFunctionsOut:
 
     # Unpack inputs
     (
-        k_in_min, k_in_max,
-        logk_grid, Pout, fout,
-        f0, sigma2v,
-        kk_grid, Pkk, Pkk_nw, fkk,
+        k_in, logk_grid, kk_grid, Y, Y2,
         xxQ, wwQ, xxR, wwR,
-        interpolator
     )  = kfuncs_in
+
+    def interpolator(x: Float64NDArray) -> Float64NDArray:
+        return eval_cubic_spline(k_in, Y, Y2, x)
+
+    # Interpolate onto output grid
+    Pout, Pout_nw, fout = interpolator(logk_grid).T
+
+    # Interpolate onto quadrature grid
+    Pkk, Pkk_nw, fkk = interpolator(kk_grid).T
 
     dkk = np.diff(kk_grid)
 
@@ -22,8 +31,8 @@ def calculator4(kfuncs_in: KFunctionsIn, A: float, ApOverf0: float, CFD3: float,
     # ============================================================================
 
     # Compute variable integration limits for mu
-    rmax = k_in_max / logk_grid  # shape (Nk,)
-    rmin = k_in_min / logk_grid  # shape (Nk,)
+    rmax = k_in[-1] / logk_grid  # shape (Nk,)
+    rmin = k_in[0] / logk_grid  # shape (Nk,)
     rmax2 = rmax * rmax
     rmin2 = rmin * rmin
 
@@ -58,7 +67,6 @@ def calculator4(kfuncs_in: KFunctionsIn, A: float, ApOverf0: float, CFD3: float,
 
     # Interpolate power spectra at (ki * y) points
     psl, psl_nw, fkmp = interpolator(logk_grid * y).T
-    fkmp /= f0
     psl = psl.T  # Transpose to (Nx, nquadSteps-1, Nk)
     fkmp = fkmp.T
 
