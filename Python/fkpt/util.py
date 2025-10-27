@@ -145,12 +145,17 @@ def measure_kfunctions(
     nquadSteps = snapshot.numerical.nquadSteps
     NQ = 10
     NR = 10
+
+    start_time = time.time()
     kfuncs_in = init_kfunctions(
         k_in, Pk_in, Pk_nw_in, fk_in,
         f0,
         kmin, kmax, Nk,
         nquadSteps, NQ, NR
     )
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Initialized k-functions input in {1e3 * elapsed_time:.1f} ms")
 
     # kernel constants
     if False: # _KERNELS_LCDMfk_ on line 287
