@@ -27,7 +27,7 @@ def calculator4(
     dkk = np.diff(kk_grid)
 
     # ============================================================================
-    # Q-FUNCTIONS: Vectorized over ALL dimensions (Nx, nquadSteps-1, Nk)
+    # Q-FUNCTIONS: Vectorized over ALL dimensions
     # ============================================================================
 
     # Compute variable integration limits for mu
@@ -37,11 +37,11 @@ def calculator4(
     rmin2 = rmin * rmin
 
     # Loop over quadrature k values (line 378 in C)
-    # fp shape: (nquadSteps-1, 1) - will broadcast to (nquadSteps-1, Nk)
-    fp = fkk[1:].reshape(-1, 1)
+    # fp shape: (nquadSteps-1, 1, 1) - will broadcast to (nquadSteps-1, 1, 1Nk)
+    fp = fkk[1:].reshape(-1, 1, 1)
 
     # r shape: (nquadSteps-1, Nk)
-    r = kk_grid[1:].reshape(-1, 1) / logk_grid
+    r = kk_grid[1:].reshape(-1, 1, 1) / logk_grid
     r2 = r ** 2
 
     # mumin, mumax: shape (nquadSteps-1, Nk)
@@ -52,13 +52,13 @@ def calculator4(
     mumax = np.divide(0.5, r, out=mumax, where=r >= 0.5)
 
     # Scale Gauss-Legendre nodes and weights to [mumin, mumax]
-    # Shape: (Nx, nquadSteps-1, Nk)
+    # Shape: (NQ, nquadSteps-1, 1, Nk)
     dmu = mumax - mumin
-    xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1) + (mumax + mumin))
-    wGL = 0.5 * dmu * wwQ.reshape(-1, 1, 1)
+    xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
+    wGL = 0.5 * dmu * wwQ.reshape(-1, 1, 1, 1)
 
     # Perform Gauss-Legendre quadrature over mu (line 392)
-    # All shapes: (Nx, nquadSteps-1, Nk)
+    # All shapes: (NQ, nquadSteps-1, Nk)
     x = xGL
     w = wGL
     x2 = x * x
@@ -66,9 +66,9 @@ def calculator4(
     y = np.sqrt(y2)
 
     # Interpolate power spectra at (ki * y) points
-    psl, psl_nw, fkmp = interpolator(logk_grid * y).T
-    psl = psl.T  # Transpose to (Nx, nquadSteps-1, Nk)
-    fkmp = fkmp.T
+    psl_w, psl_nw, fkmp = interpolator(logk_grid * y).T
+    psl = np.concatenate((psl_w.T, psl_nw.T), axis=2) # shape (NQ, nquadSteps-1, 2, Nk)
+    fkmp = fkmp.T # shape (NQ, nquadSteps-1, 1, Nk)
 
     # Compute SPT kernels F2evQ and G2evQ (lines 404-411)
     AngleEvQ = (x - r) / y
@@ -194,8 +194,8 @@ def calculator4(
         ), axis=0)
 
     # Left and right endpoints for power spectra
-    PSLB = Pkk[1:].reshape(-1, 1)  # shape (nquadSteps-1, 1)
-    dkk_reshaped = dkk.reshape(-1, 1)  # shape (nquadSteps-1, 1)
+    PSLB = np.stack((Pkk[1:], Pkk_nw[1:]), axis=1)[:,:,None] # shape (nQuadSteps-1, 2, 1)
+    dkk_reshaped = dkk.reshape(-1, 1, 1)  # shape (nQuadSteps-1, 1, 1)
 
     # Bias
     Pb1b2_B = np.sum(wpsl * (r2 * F2evQ), axis=0)
@@ -266,7 +266,7 @@ def calculator4(
     Pbs2theta = trapsumQ(Pbs2theta_B)
 
     # ============================================================================
-    # R-FUNCTIONS: Also fully vectorized (Nx, nquadSteps-2, Nk) - note nquadSteps-2!
+    # R-FUNCTIONS: Also fully vectorized (NR, nquadSteps-2, Nk) - note nquadSteps-2!
     # ============================================================================
 
     # Get f(k) at output k values (line 602-603 in C)

@@ -79,45 +79,45 @@ def validate_kfunctions(
 
     try:
         for i, name in enumerate(("kfuncs_wiggle",)):
-            block = getattr(snapshot, name)
-            '''
+            B = getattr(snapshot, name)
+
             # Validate P22 results
-            assert np.allclose(X.P22dd, block.P22dd), f"{name}.P22dd does not match!"
-            assert np.allclose(X.P22du, block.P22du), f"{name}.P22du does not match!"
-            assert np.allclose(X.P22uu, block.P22uu), f"{name}.P22uu does not match!"
+            assert np.allclose(X.P22dd[i], B.P22dd), f"{name}.P22dd does not match!"
+            assert np.allclose(X.P22du[i], B.P22du), f"{name}.P22du does not match!"
+            assert np.allclose(X.P22uu[i], B.P22uu), f"{name}.P22uu does not match!"
 
             # Validate 3-pt correlations (A-terms)
-            assert np.allclose(X.I1udd1A, block.I1udd1A), f"{name}.I1udd1A does not match!"
-            assert np.allclose(X.I2uud1A, block.I2uud1A), f"{name}.I2uud1A does not match!"
-            assert np.allclose(X.I2uud2A, block.I2uud2A), f"{name}.I2uud2A does not match!"
-            assert np.allclose(X.I3uuu2A, block.I3uuu2A), f"{name}.I3uuu2A does not match!"
-            assert np.allclose(X.I3uuu3A, block.I3uuu3A), f"{name}.I3uuu3A does not match!"
+            assert np.allclose(X.I1udd1A[i], B.I1udd1A), f"{name}.I1udd1A does not match!"
+            assert np.allclose(X.I2uud1A[i], B.I2uud1A), f"{name}.I2uud1A does not match!"
+            assert np.allclose(X.I2uud2A[i], B.I2uud2A), f"{name}.I2uud2A does not match!"
+            assert np.allclose(X.I3uuu2A[i], B.I3uuu2A), f"{name}.I3uuu2A does not match!"
+            assert np.allclose(X.I3uuu3A[i], B.I3uuu3A), f"{name}.I3uuu3A does not match!"
 
             # Validate D-terms (4-pt correlations)
-            assert np.allclose(X.I2uudd1BpC, block.I2uudd1BpC), f"{name}.I2uudd1BpC does not match!"
-            assert np.allclose(X.I2uudd2BpC, block.I2uudd2BpC), f"{name}.I2uudd2BpC does not match!"
-            assert np.allclose(X.I3uuud2BpC, block.I3uuud2BpC), f"{name}.I3uuud2BpC does not match!"
-            assert np.allclose(X.I3uuud3BpC, block.I3uuud3BpC), f"{name}.I3uuud3BpC does not match!"
-            assert np.allclose(X.I4uuuu2BpC, block.I4uuuu2BpC), f"{name}.I4uuuu2BpC does not match!"
-            assert np.allclose(X.I4uuuu3BpC, block.I4uuuu3BpC), f"{name}.I4uuuu3BpC does not match!"
-            assert np.allclose(X.I4uuuu4BpC, block.I4uuuu4BpC), f"{name}.I4uuuu4BpC does not match!"
+            assert np.allclose(X.I2uudd1BpC[i], B.I2uudd1BpC), f"{name}.I2uudd1BpC does not match!"
+            assert np.allclose(X.I2uudd2BpC[i], B.I2uudd2BpC), f"{name}.I2uudd2BpC does not match!"
+            assert np.allclose(X.I3uuud2BpC[i], B.I3uuud2BpC), f"{name}.I3uuud2BpC does not match!"
+            assert np.allclose(X.I3uuud3BpC[i], B.I3uuud3BpC), f"{name}.I3uuud3BpC does not match!"
+            assert np.allclose(X.I4uuuu2BpC[i], B.I4uuuu2BpC), f"{name}.I4uuuu2BpC does not match!"
+            assert np.allclose(X.I4uuuu3BpC[i], B.I4uuuu3BpC), f"{name}.I4uuuu3BpC does not match!"
+            assert np.allclose(X.I4uuuu4BpC[i], B.I4uuuu4BpC), f"{name}.I4uuuu4BpC does not match!"
 
             # Validate bias terms
-            assert np.allclose(X.Pb1b2, block.Pb1b2), f"{name}.Pb1b2 does not match!"
-            assert np.allclose(X.Pb1bs2, block.Pb1bs2), f"{name}.Pb1bs2 does not match!"
-            assert np.allclose(X.Pb22, block.Pb22), f"{name}.Pb22 does not match!"
-            assert np.allclose(X.Pb2s2, block.Pb2s2), f"{name}.Pb2s2 does not match!"
-            assert np.allclose(X.Ps22, block.Ps22), f"{name}.Ps22 does not match!"
-            assert np.allclose(X.Pb2theta, block.Pb2theta), f"{name}.Pb2theta does not match!"
-            assert np.allclose(X.Pbs2theta, block.Pbs2theta), f"{name}.Pbs2theta does not match!"
-            '''
+            assert np.allclose(X.Pb1b2[i],     B.Pb1b2), f"{name}.Pb1b2 does not match!"
+            assert np.allclose(X.Pb1bs2[i],    B.Pb1bs2), f"{name}.Pb1bs2 does not match!"
+            assert np.allclose(X.Pb22[i],      B.Pb22), f"{name}.Pb22 does not match!"
+            assert np.allclose(X.Pb2s2[i],     B.Pb2s2), f"{name}.Pb2s2 does not match!"
+            assert np.allclose(X.Ps22[i],      B.Ps22), f"{name}.Ps22 does not match!"
+            assert np.allclose(X.Pb2theta[i],  B.Pb2theta), f"{name}.Pb2theta does not match!"
+            assert np.allclose(X.Pbs2theta[i], B.Pbs2theta), f"{name}.Pbs2theta does not match!"
+
             # Validate P13 results
-            assert np.allclose(X.P13dd[i], block.P13dd), f"{name}.P13dd does not match!"
-            assert np.allclose(X.P13du[i], block.P13du), f"{name}.P13du does not match!"
-            assert np.allclose(X.P13uu[i], block.P13uu), f"{name}.P13uu does not match!"
+            assert np.allclose(X.P13dd[i], B.P13dd), f"{name}.P13dd does not match!"
+            assert np.allclose(X.P13du[i], B.P13du), f"{name}.P13du does not match!"
+            assert np.allclose(X.P13uu[i], B.P13uu), f"{name}.P13uu does not match!"
 
             # Validate additional results
-            #assert np.allclose(X.sigma32PSL, block.sigma32PSL), f"{name}.sigma32PSL does not match!"
+            assert np.allclose(X.sigma32PSL[i], B.sigma32PSL), f"{name}.sigma32PSL does not match!"
 
         return True
 
