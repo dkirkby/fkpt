@@ -1,6 +1,5 @@
 import numpy as np
 
-from scipy.interpolate import CubicSpline
 from scipy.special import roots_legendre
 
 from fkpt.types import Float64NDArray, KFunctionsIn, KFunctionsOut, KFunctionsCalculator
@@ -34,9 +33,10 @@ def eval_cubic_spline(xa: Float64NDArray, ya: Float64NDArray, y2a: Float64NDArra
     h = xa[idx_hi] - xa[idx_lo]
     a = (xa[idx_hi] - x) / h
     b = (x - xa[idx_lo]) / h
-    print(a.shape, ya[...,idx_lo].shape)
-    return (a * ya[...,idx_lo] + b * ya[...,idx_hi] +
-            ((a**3 - a) * y2a[...,idx_lo] + (b**3 - b) * y2a[...,idx_hi]) * (h**2) / 6.0)
+    return np.moveaxis(
+        (a * ya[...,idx_lo] + b * ya[...,idx_hi] +
+        ((a**3 - a) * y2a[...,idx_lo] + (b**3 - b) * y2a[...,idx_hi]) * (h**2) / 6.0),
+        0, -1)
 
 
 def init_kfunctions(
@@ -46,8 +46,13 @@ def init_kfunctions(
         nquadSteps: int, NQ: int=10, NR: int=10
         ) -> KFunctionsIn:
 
-    # Initialize cubic spline interpolator
-    interpolator = CubicSpline(k_in, np.vstack([Pk_in, Pk_nw_in, fk_in]).T, axis=0)
+    # Initialize simultaneous cubic spline interpolation for Y(k) = [P(k), P_nw(k), f(k)]
+    # by precomputing 2nd derivatives Y2(k)
+    X = k_in
+    Y = np.vstack([Pk_in, Pk_nw_in, fk_in])
+    Y2 = init_cubic_spline(X, Y)
+    def interpolator(x: Float64NDArray) -> Float64NDArray:
+        return eval_cubic_spline(X, Y, Y2, x)
 
     # Initialize logarithmic output k grid
     logk_grid = np.geomspace(kmin, kmax, Nk)
