@@ -4,7 +4,7 @@ from fkpt.types import KFunctionsIn, KFunctionsOut, Float64NDArray
 from fkpt.util import eval_cubic_spline
 
 
-def calculator4(
+def calculate(
         kfuncs_in: KFunctionsIn,
         A: float, ApOverf0: float, CFD3: float, CFD3p: float, sigma2v: float
     ) -> KFunctionsOut:
