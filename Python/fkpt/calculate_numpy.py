@@ -24,6 +24,7 @@ def calculate(
     # Interpolate onto quadrature grid
     Pkk, Pkk_nw, fkk = interpolator(kk_grid).T
 
+    logk_grid2 = logk_grid * logk_grid
     dkk = np.diff(kk_grid)
 
     # ============================================================================
@@ -187,7 +188,7 @@ def calculate(
                 -4.0
                 + 8.0 * rx * (3.0 - 5.0 * x2)
                 + 12.0 * x2
-                + r2 * (3.0 - 30.0 * x2 + 35.0 * x ** 4)
+                + r2 * (3.0 - 30.0 * x2 + 35.0 * x2 ** 2)
             )
         )
         / (16.0 * y4)
@@ -222,7 +223,7 @@ def calculate(
     Pbs2theta_B = np.sum(wpsl * (r2 * S2evQ * G2evQ), axis=0)
 
     # Calculate scaling for Q-functions (line 561-563, 565-569 in C)
-    scale_Q = 0.25 * (logk_grid / np.pi) ** 2
+    scale_Q = 0.25 * logk_grid2 / np.pi ** 2
 
     # Apply trapezoidal rule: sum of (f_A * P_A + f_B * P_B) * dk / 2
     #def trapsumQ_orig(B):
@@ -349,7 +350,7 @@ def calculate(
 
     # Calculate scaling for R-functions (line 699-707 in C)
     pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
-    scale_R = logk_grid ** 2 / (8.0 * np.pi ** 2) * pkl_k
+    scale_R = logk_grid2 / (8.0 * np.pi ** 2) * pkl_k
 
     # Trapezoidal integration (line 679-683 in C)
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
@@ -391,13 +392,13 @@ def calculate(
     fk_grid = fk  # Already normalized by f0
 
     # I2uudd1D: Line 723-724 (subtract k^2 * sigma2v * P_L(k))
-    I2uudd1BpC = I2uudd1BpC - logk_grid**2 * sigma2v * pkl_k
+    I2uudd1BpC = I2uudd1BpC - logk_grid2 * sigma2v * pkl_k
 
     # I3uuud2D: Line 727-728 (subtract 2 * k^2 * sigma2v * f(k) * P_L(k))
-    I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid**2 * sigma2v * fk_grid * pkl_k
+    I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
 
     # I4uuuu3D: Line 732-733 (subtract k^2 * sigma2v * f(k)^2 * P_L(k))
-    I4uuuu3BpC = I4uuuu3BpC - logk_grid**2 * sigma2v * fk_grid**2 * pkl_k
+    I4uuuu3BpC = I4uuuu3BpC - logk_grid2 * sigma2v * fk_grid**2 * pkl_k
 
     return KFunctionsOut(
         P22dd, P22du, P22uu,
