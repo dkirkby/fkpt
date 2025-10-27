@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 
 from scipy.special import roots_legendre
@@ -122,7 +124,8 @@ def validate_kfunctions(
 
 def measure_kfunctions(
         calculator: KFunctionsCalculator,
-        snapshot: KFunctionsSnapshot
+        snapshot: KFunctionsSnapshot,
+        nruns: int = 10
         ) -> None:
     """Measure k-functions using the provided calculator and snapshot data."""
 
@@ -158,7 +161,7 @@ def measure_kfunctions(
         CFD3 = 1
         CFD3p = 1
 
-    # Calculate k-functions
+    # Calculate k-functions first time to validate results and do any JIT initialization
     kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v)
 
     # Validate results
@@ -166,3 +169,12 @@ def measure_kfunctions(
         print("K-functions validated successfully against the snapshot!")
     else:
         print("K-functions validation failed!")
+
+    # Measure time for multiple evaluations
+    start_time = time.time()
+    for _ in range(nruns):
+        kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v)
+    end_time = time.time()
+
+    elapsed_time = end_time - start_time
+    print(f"Average time over {nruns} runs: {1e3 * elapsed_time / nruns:.1f} ms")
