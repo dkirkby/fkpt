@@ -348,22 +348,16 @@ def calculator4(
     ), axis=0)
 
     # Calculate scaling for R-functions (line 699-707 in C)
-    ##pkl_k = interpolator(logk_grid)[:, 0]
-    pkl_k = Pout  # already computed above
+    pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
     scale_R = logk_grid ** 2 / (8.0 * np.pi ** 2) * pkl_k
 
     # Trapezoidal integration (line 679-683 in C)
-    dkk_r = dkk_reshaped[:-1]
-
-    # Apply trapezoidal rule: sum of (f_A + f_B) * dk / (2 * k)
-    #def trapsumR_orig(B):
-    #    A = np.vstack([np.zeros((1, Nk)), B[:-1, :]])
-    #    return np.sum(dkk_r * (A + B) / (2.0 * logk_grid), axis=0) * scale_R
+    dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def trapsumR(B):
-        B *= scale_R
+        B = B[:,None,:] * scale_R
         B[1:] += B[:-1]
-        B *= dkk_r
+        B = B * dkk_r
         B[0] += np.sum(B[1:], axis=0)
         return B[0]
 
