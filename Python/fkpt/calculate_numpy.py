@@ -70,6 +70,11 @@ def calculate(
     psl_w, psl_nw, fkmp = interpolator(logk_grid * y).T
     psl = np.concatenate((psl_w.T, psl_nw.T), axis=2) # shape (NQ, nquadSteps-1, 2, Nk)
     fkmp = fkmp.T # shape (NQ, nquadSteps-1, 1, Nk)
+    # Note that this concatenate() creates a copy but the alternative no-copy view is
+    # non-contiguous in memory so slower overall:
+    # out = interpolator(logk_grid * y)
+    # psl = np.moveaxis(out[..., :2], -1, -2)[:, :, 0, ...]
+    # fkmp = out.T[2].T
 
     # Compute SPT kernels F2evQ and G2evQ (lines 404-411)
     AngleEvQ = (x - r) / y
@@ -232,12 +237,12 @@ def calculate(
 
     # Eliminate memory allocation for A and perform all array ops in place
     def trapsumQ(B):
-        B *= scale_Q
-        B *= PSLB
-        B[1:] += B[:-1]
-        B *= dkk_reshaped
-        B[0] += np.sum(B[1:], axis=0)
-        return B[0]
+        B = B * scale_Q * PSLB
+        #B[1:] += B[:-1]
+        #B *= dkk_reshaped
+        #B[0] += np.sum(B[1:], axis=0)
+        #return B[0]
+        return np.sum((B[:-1] + B[1:]) * dkk_reshaped[1:], axis=0) + B[0] * dkk_reshaped[0]
 
     P22dd = trapsumQ(P22dd_B)
     P22du = trapsumQ(P22du_B)
