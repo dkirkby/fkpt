@@ -352,14 +352,15 @@ def _calculate_jax_core(
     fk = fout
 
     # R-function uses r from kk[2] to kk[nquadSteps-1]
-    fp_r = fkk[1:-1].reshape(-1, 1)
-    r_r = kk_grid[1:-1].reshape(-1, 1) / logk_grid
+    fp_r = fkk[1:-1].reshape(-1, 1, 1)
+    r_r = kk_grid[1:-1].reshape(-1, 1, 1) / logk_grid
     r2_r = r_r * r_r
-    psl_r = Pkk[1:-1].reshape(-1, 1)
+    #psl_r = Pkk[1:-1].reshape(-1, 1, 1)
+    psl_r = jnp.stack((Pkk[1:-1], Pkk_nw[1:-1]), axis=1)[:,:,None] # shape (nquadSteps-2, 2, 1)
 
     # Gauss-Legendre points in [-1, 1] (fixed limits for R-functions)
-    x_r = xxR.reshape(-1, 1, 1)
-    w_r = wwR.reshape(-1, 1, 1)
+    x_r = xxR.reshape(-1, 1, 1, 1)
+    w_r = wwR.reshape(-1, 1, 1, 1)
     x2_r = x_r * x_r
     y2_r = 1.0 + r2_r - 2.0 * r_r * x_r
 
@@ -434,7 +435,7 @@ def _calculate_jax_core(
 
         Matches numpy version computation pattern.
         """
-        B = B[:, None, :] * scale_R
+        B = B * scale_R
         # Add B[i-1] to B[i], with B[-1] = 0
         B_prev = jnp.concatenate([jnp.zeros_like(B[0:1]), B[:-1]], axis=0)
         B_sum = B + B_prev
@@ -486,7 +487,8 @@ def _calculate_jax_core(
         Pb1b2, Pb1bs2, Pb22, Pb2s2, Ps22,
         Pb2theta, Pbs2theta,
         P13dd, P13du, P13uu,
-        sigma32PSL
+        sigma32PSL,
+        pkl_k
     )
 
 
