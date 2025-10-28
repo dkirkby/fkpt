@@ -73,57 +73,67 @@ def init_kfunctions(
 
 def validate_kfunctions(
         X: KFunctionsOut,
-        snapshot: KFunctionsSnapshot
+        snapshot: KFunctionsSnapshot,
+        rtol: float = 1e-5,
+        atol: float = 1e-8
         ) -> bool:
     """Validate that the input k-grid matches the snapshot k-grid."""
 
-    try:
-        for i, name in enumerate(("kfuncs_wiggle",)):
-            B = getattr(snapshot, name)
+    ok = True
 
-            # Validate P22 results
-            assert np.allclose(X.P22dd[i], B.P22dd), f"{name}.P22dd does not match!"
-            assert np.allclose(X.P22du[i], B.P22du), f"{name}.P22du does not match!"
-            assert np.allclose(X.P22uu[i], B.P22uu), f"{name}.P22uu does not match!"
+    def allclose(a, b, name: str) -> None:
+        nonlocal ok
+        if not np.allclose(a, b, rtol=rtol, atol=atol):
+            diff = atol + rtol * np.abs(b)
+            nfail = np.where(np.abs(a - b) > diff)[0].size
+            max_abs_diff = np.max(np.abs(a - b))
+            max_rel_diff = np.max(np.abs(a - b) / (np.abs(b) + atol))
+            print(f"{name:<26} validation fails at {nfail:3d}/{len(b)} elements: max diffs {max_abs_diff:<.3e} (abs) {max_rel_diff:<.3e} (rel)")
+            ok = False
 
-            # Validate 3-pt correlations (A-terms)
-            assert np.allclose(X.I1udd1A[i], B.I1udd1A), f"{name}.I1udd1A does not match!"
-            assert np.allclose(X.I2uud1A[i], B.I2uud1A), f"{name}.I2uud1A does not match!"
-            assert np.allclose(X.I2uud2A[i], B.I2uud2A), f"{name}.I2uud2A does not match!"
-            assert np.allclose(X.I3uuu2A[i], B.I3uuu2A), f"{name}.I3uuu2A does not match!"
-            assert np.allclose(X.I3uuu3A[i], B.I3uuu3A), f"{name}.I3uuu3A does not match!"
+    for i, name in enumerate(("kfuncs_wiggle", "kfuncs_nowiggle")):
+        B = getattr(snapshot, name)
 
-            # Validate D-terms (4-pt correlations)
-            assert np.allclose(X.I2uudd1BpC[i], B.I2uudd1BpC), f"{name}.I2uudd1BpC does not match!"
-            assert np.allclose(X.I2uudd2BpC[i], B.I2uudd2BpC), f"{name}.I2uudd2BpC does not match!"
-            assert np.allclose(X.I3uuud2BpC[i], B.I3uuud2BpC), f"{name}.I3uuud2BpC does not match!"
-            assert np.allclose(X.I3uuud3BpC[i], B.I3uuud3BpC), f"{name}.I3uuud3BpC does not match!"
-            assert np.allclose(X.I4uuuu2BpC[i], B.I4uuuu2BpC), f"{name}.I4uuuu2BpC does not match!"
-            assert np.allclose(X.I4uuuu3BpC[i], B.I4uuuu3BpC), f"{name}.I4uuuu3BpC does not match!"
-            assert np.allclose(X.I4uuuu4BpC[i], B.I4uuuu4BpC), f"{name}.I4uuuu4BpC does not match!"
+        # Validate P22 results
+        allclose(X.P22dd[i], B.P22dd, f"{name}.P22dd")
+        allclose(X.P22du[i], B.P22du, f"{name}.P22du")
+        allclose(X.P22uu[i], B.P22uu, f"{name}.P22uu")
 
-            # Validate bias terms
-            assert np.allclose(X.Pb1b2[i],     B.Pb1b2), f"{name}.Pb1b2 does not match!"
-            assert np.allclose(X.Pb1bs2[i],    B.Pb1bs2), f"{name}.Pb1bs2 does not match!"
-            assert np.allclose(X.Pb22[i],      B.Pb22), f"{name}.Pb22 does not match!"
-            assert np.allclose(X.Pb2s2[i],     B.Pb2s2), f"{name}.Pb2s2 does not match!"
-            assert np.allclose(X.Ps22[i],      B.Ps22), f"{name}.Ps22 does not match!"
-            assert np.allclose(X.Pb2theta[i],  B.Pb2theta), f"{name}.Pb2theta does not match!"
-            assert np.allclose(X.Pbs2theta[i], B.Pbs2theta), f"{name}.Pbs2theta does not match!"
+        # Validate 3-pt correlations (A-terms)
+        allclose(X.I1udd1A[i], B.I1udd1A, f"{name}.I1udd1A")
+        allclose(X.I2uud1A[i], B.I2uud1A, f"{name}.I2uud1A")
+        allclose(X.I2uud2A[i], B.I2uud2A, f"{name}.I2uud2A")
+        allclose(X.I3uuu2A[i], B.I3uuu2A, f"{name}.I3uuu2A")
+        allclose(X.I3uuu3A[i], B.I3uuu3A, f"{name}.I3uuu3A")
 
-            # Validate P13 results
-            assert np.allclose(X.P13dd[i], B.P13dd), f"{name}.P13dd does not match!"
-            assert np.allclose(X.P13du[i], B.P13du), f"{name}.P13du does not match!"
-            assert np.allclose(X.P13uu[i], B.P13uu), f"{name}.P13uu does not match!"
+        # Validate D-terms (4-pt correlations)
+        allclose(X.I2uudd1BpC[i], B.I2uudd1BpC, f"{name}.I2uudd1BpC")
+        allclose(X.I2uudd2BpC[i], B.I2uudd2BpC, f"{name}.I2uudd2BpC")
+        allclose(X.I3uuud2BpC[i], B.I3uuud2BpC, f"{name}.I3uuud2BpC")
+        allclose(X.I3uuud3BpC[i], B.I3uuud3BpC, f"{name}.I3uuud3BpC")
+        allclose(X.I4uuuu2BpC[i], B.I4uuuu2BpC, f"{name}.I4uuuu2BpC")
+        allclose(X.I4uuuu3BpC[i], B.I4uuuu3BpC, f"{name}.I4uuuu3BpC")
+        allclose(X.I4uuuu4BpC[i], B.I4uuuu4BpC, f"{name}.I4uuuu4BpC")
 
-            # Validate additional results
-            assert np.allclose(X.sigma32PSL[i], B.sigma32PSL), f"{name}.sigma32PSL does not match!"
+        # Validate bias terms
+        allclose(X.Pb1b2[i],     B.Pb1b2, f"{name}.Pb1b2")
+        allclose(X.Pb1bs2[i],    B.Pb1bs2, f"{name}.Pb1bs2")
+        allclose(X.Pb22[i],      B.Pb22, f"{name}.Pb22")
+        allclose(X.Pb2s2[i],     B.Pb2s2, f"{name}.Pb2s2")
+        allclose(X.Ps22[i],      B.Ps22, f"{name}.Ps22")
+        allclose(X.Pb2theta[i],  B.Pb2theta, f"{name}.Pb2theta")
+        allclose(X.Pbs2theta[i], B.Pbs2theta, f"{name}.Pbs2theta")
 
-        return True
+        # Validate P13 results
+        allclose(X.P13dd[i], B.P13dd, f"{name}.P13dd")
+        allclose(X.P13du[i], B.P13du, f"{name}.P13du")
+        allclose(X.P13uu[i], B.P13uu, f"{name}.P13uu")
 
-    except AssertionError as e:
-        print(f"Validation error: {e}")
-        return False
+        # Validate additional results
+        allclose(X.sigma32PSL[i], B.sigma32PSL, f"{name}.sigma32PSL")
+        allclose(X.pkl[i], B.pkl, f"{name}.pkl")
+
+    return ok
 
 def measure_kfunctions(
         calculator: KFunctionsCalculator,

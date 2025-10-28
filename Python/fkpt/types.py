@@ -45,6 +45,7 @@ class KFunctionsOut(NamedTuple):
     P13du: Float64NDArray
     P13uu: Float64NDArray
     sigma32PSL: Float64NDArray
+    pkl: Float64NDArray
 
 # Args are (KFunctionsIn, A, ApOverf0, CFD3, CFD3p, sigma2v) -> KFunctionsOut
 KFunctionsCalculator = Callable[[KFunctionsIn, float, float, float, float, float], KFunctionsOut]
