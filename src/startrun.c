@@ -1182,7 +1182,7 @@ local void PSLTableNW(void)
 
     }
 
-
+    spline(kPS,pPS_nw,nPSLT,1.0e30,1.0e30,pPS2_nw);
 
 
 
