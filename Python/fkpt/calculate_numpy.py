@@ -279,14 +279,14 @@ def calculate(
     fk = fout  # already computed above
 
     # R-function uses r from kk[2] to kk[nquadSteps-1] (see line 604: i=2 to nquadSteps-1)
-    fp_r = fkk[1:-1].reshape(-1, 1)
-    r_r = kk_grid[1:-1].reshape(-1, 1) / logk_grid
+    fp_r = fkk[1:-1].reshape(-1 , 1, 1)
+    r_r = kk_grid[1:-1].reshape(-1, 1, 1) / logk_grid
     r2_r = r_r ** 2
-    psl_r = Pkk[1:-1].reshape(-1, 1)
+    psl_r = np.stack((Pkk[1:-1], Pkk_nw[1:-1]), axis=1)[:,:,None] # shape (nquadSteps-2, 2, 1)
 
     # Gauss-Legendre points in [-1, 1] (fixed limits for R-functions)
-    x_r = xxR.reshape(-1, 1, 1)
-    w_r = wwR.reshape(-1, 1, 1)
+    x_r = xxR.reshape(-1, 1, 1, 1)
+    w_r = wwR.reshape(-1, 1, 1, 1)
     x2_r = x_r * x_r
     y2_r = 1.0 + r2_r - 2.0 * r_r * x_r
 
@@ -361,7 +361,7 @@ def calculate(
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def trapsumR(B):
-        B = B[:,None,:] * scale_R
+        B = B * scale_R
         B[1:] += B[:-1]
         B = B * dkk_r
         B[0] += np.sum(B[1:], axis=0)
