@@ -362,10 +362,11 @@ def calculate(
 
     def trapsumR(B):
         B = B * scale_R
-        B[1:] += B[:-1]
-        B = B * dkk_r
-        B[0] += np.sum(B[1:], axis=0)
-        return B[0]
+        #B[1:] += B[:-1]
+        #B = B * dkk_r
+        #B[0] += np.sum(B[1:], axis=0)
+        #return B[0]
+        return np.sum((B[:-1] + B[1:]) * dkk_r[1:], axis=0) + B[0] * dkk_r[0]
 
     I1udd1a = trapsumR(I1udd1a_B)
     I2uud1a = trapsumR(I2uud1a_B)
