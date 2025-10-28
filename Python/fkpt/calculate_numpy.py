@@ -415,5 +415,6 @@ def calculate(
         Pb1b2, Pb1bs2, Pb22, Pb2s2, Ps22,
         Pb2theta, Pbs2theta,
         P13dd, P13du, P13uu,
-        sigma32PSL
+        sigma32PSL,
+        pkl_k
     )
