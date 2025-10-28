@@ -29,3 +29,4 @@ Summary of timing results:
 | Platform        | C     | numpy |
 |-----------------|-------|-------|
 | Apple M1 Max    | 128ms | 102ms |
+| Entropy         | 186ms | 126ms |
