@@ -11,6 +11,10 @@ Key differences from calculate_numpy.py:
 - Accepts numpy arrays as input, converts internally, returns numpy arrays
 """
 
+# Enable 64-bit precision in JAX to match NumPy
+from jax import config
+config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 from jax import jit
 import numpy as np
@@ -156,7 +160,7 @@ def _calculate_jax_core(
     AngleEvQ2 = AngleEvQ * AngleEvQ
     fsum = fp + fkmp
 
-    S2evQ = AngleEvQ2 - 1.0/3.0
+    S2evQ = AngleEvQ ** 2 - 1.0/3.0
     F2evQ = (1.0/2.0 + 3.0/14.0 * A + (1.0/2.0 - 3.0/14.0 * A) * AngleEvQ2 +
              AngleEvQ / 2.0 * (y/r + r/y))
     G2evQ = (3.0/14.0 * A * fsum + 3.0/14.0 * ApOverf0 +
@@ -245,7 +249,7 @@ def _calculate_jax_core(
 
     # I4uuuu2BpC
     I4uuuu2BpC_B = jnp.sum(wpsl * (
-        3.0 * fkmp**2 * fp**2 * r2 * (x2 - 1.0) * (x2 - 1.0) / (16.0 * y4)
+        3.0 * fkmp**2 * fp**2 * r2 * (-1.0 + x2) ** 2 / (16.0 * y4)
         ), axis=0)
 
     # I4uuuu3BpC
@@ -256,15 +260,14 @@ def _calculate_jax_core(
         / (8.0 * y2 * y2)
         ), axis=0)
 
-    # I4uuuu4BpC - OPTIMIZED: use x4 = x2*x2 instead of x**4
-    x4 = x2 * x2
+    # I4uuuu4BpC
     I4uuuu4BpC_B = jnp.sum(wpsl * (
         (
             fkmp**2 * fp**2 * (
                 -4.0
                 + 8.0 * rx * (3.0 - 5.0 * x2)
                 + 12.0 * x2
-                + r2 * (3.0 - 30.0 * x2 + 35.0 * x4)
+                + r2 * (3.0 - 30.0 * x2 + 35.0 * x2 ** 2)
             )
         )
         / (16.0 * y4)
@@ -291,31 +294,28 @@ def _calculate_jax_core(
     Ps22_B = jnp.sum(wpsl * (
         1.0 / 2.0 * r2
         * (
-            1.0 / 2.0 * (S2evQ * S2evQ - 4.0 / 9.0 * Pratio)
-            + 1.0 / 2.0 * (S2evQ * S2evQ - 4.0 / 9.0 * PratioInv)
+            1.0 / 2.0 * (S2evQ ** 2 - 4.0 / 9.0 * Pratio)
+            + 1.0 / 2.0 * (S2evQ ** 2 - 4.0 / 9.0 * PratioInv)
         )
         ), axis=0)
     Pb2theta_B = jnp.sum(wpsl * (r2 * G2evQ), axis=0)
     Pbs2theta_B = jnp.sum(wpsl * (r2 * S2evQ * G2evQ), axis=0)
 
     # Calculate scaling for Q-functions
-    logk_grid_sq = logk_grid * logk_grid  # Cache this computation
-    scale_Q = 0.25 * (logk_grid_sq / jnp.pi**2)
+    logk_grid2 = logk_grid * logk_grid  # Cache this computation
+    scale_Q = 0.25 * logk_grid2 / jnp.pi ** 2
 
     # Apply trapezoidal rule (functional version for JAX)
     def trapsumQ(B):
         """Functional trapezoidal integration for Q-functions.
 
         Matches numpy version which computes:
-        sum_i ( (B[i] + B[i-1]) * scale_Q * PSLB[i] * dk[i] )
-        where B[-1] = 0 implicitly.
+        sum_i ( (B[i] + B[i-1]) * dk[i] ) * scale_Q * PSLB
+        The first element uses dk[0] with B[0] only (no previous element).
         """
         B = B * scale_Q * PSLB
-        # Add B[i-1] to B[i], with B[-1] = 0
-        B_prev = jnp.concatenate([jnp.zeros_like(B[0:1]), B[:-1]], axis=0)
-        B_sum = B + B_prev
-        B_sum = B_sum * dkk_reshaped
-        return jnp.sum(B_sum, axis=0)
+        # Compute trapezoidal sum: (B[i-1] + B[i]) * dk[i] for i >= 1, plus B[0] * dk[0]
+        return jnp.sum((B[:-1] + B[1:]) * dkk_reshaped[1:], axis=0) + B[0] * dkk_reshaped[0]
 
     P22dd = trapsumQ(P22dd_B)
     P22du = trapsumQ(P22du_B)
@@ -425,7 +425,7 @@ def _calculate_jax_core(
 
     # Calculate scaling for R-functions
     pkl_k = jnp.stack([Pout, Pout_nw], axis=0)  # shape (2, Nk)
-    scale_R = logk_grid_sq / (8.0 * jnp.pi**2) * pkl_k
+    scale_R = logk_grid2 / (8.0 * jnp.pi ** 2) * pkl_k
 
     # Trapezoidal integration (functional version)
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
@@ -436,11 +436,8 @@ def _calculate_jax_core(
         Matches numpy version computation pattern.
         """
         B = B * scale_R
-        # Add B[i-1] to B[i], with B[-1] = 0
-        B_prev = jnp.concatenate([jnp.zeros_like(B[0:1]), B[:-1]], axis=0)
-        B_sum = B + B_prev
-        B_sum = B_sum * dkk_r
-        return jnp.sum(B_sum, axis=0)
+        # Compute trapezoidal sum: (B[i-1] + B[i]) * dk[i] for i >= 1, plus B[0] * dk[0]
+        return jnp.sum((B[:-1] + B[1:]) * dkk_r[1:], axis=0) + B[0] * dkk_r[0]
 
     I1udd1a = trapsumR(I1udd1a_B)
     I2uud1a = trapsumR(I2uud1a_B)
@@ -469,13 +466,13 @@ def _calculate_jax_core(
     fk_grid = fk
 
     # I2uudd1D: subtract k^2 * sigma2v * P_L(k)
-    I2uudd1BpC = I2uudd1BpC - logk_grid_sq * sigma2v * pkl_k
+    I2uudd1BpC = I2uudd1BpC - logk_grid2 * sigma2v * pkl_k
 
     # I3uuud2D: subtract 2 * k^2 * sigma2v * f(k) * P_L(k)
-    I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid_sq * sigma2v * fk_grid * pkl_k
+    I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
 
     # I4uuuu3D: subtract k^2 * sigma2v * f(k)^2 * P_L(k)
-    I4uuuu3BpC = I4uuuu3BpC - logk_grid_sq * sigma2v * fk_grid * fk_grid * pkl_k
+    I4uuuu3BpC = I4uuuu3BpC - logk_grid2 * sigma2v * fk_grid ** 2 * pkl_k
 
     return (
         P22dd, P22du, P22uu,
@@ -508,16 +505,17 @@ def calculate(
     Returns:
         KFunctionsOut containing numpy arrays (compatible with calculate_numpy output)
     """
-    # Convert numpy arrays to JAX arrays
-    k_in_jax = jnp.asarray(kfuncs_in.k_in)
-    logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid)
-    kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid)
-    Y_jax = jnp.asarray(kfuncs_in.Y)
-    Y2_jax = jnp.asarray(kfuncs_in.Y2)
-    xxQ_jax = jnp.asarray(kfuncs_in.xxQ)
-    wwQ_jax = jnp.asarray(kfuncs_in.wwQ)
-    xxR_jax = jnp.asarray(kfuncs_in.xxR)
-    wwR_jax = jnp.asarray(kfuncs_in.wwR)
+    # Convert numpy arrays to JAX arrays with explicit float64 dtype
+    # This is critical to match NumPy precision and avoid numerical differences
+    k_in_jax = jnp.asarray(kfuncs_in.k_in, dtype=jnp.float64)
+    logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid, dtype=jnp.float64)
+    kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid, dtype=jnp.float64)
+    Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
+    Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)
+    xxQ_jax = jnp.asarray(kfuncs_in.xxQ, dtype=jnp.float64)
+    wwQ_jax = jnp.asarray(kfuncs_in.wwQ, dtype=jnp.float64)
+    xxR_jax = jnp.asarray(kfuncs_in.xxR, dtype=jnp.float64)
+    wwR_jax = jnp.asarray(kfuncs_in.wwR, dtype=jnp.float64)
 
     # Run JIT-compiled calculation
     results = _calculate_jax_core(
