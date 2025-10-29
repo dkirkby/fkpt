@@ -46,7 +46,7 @@ def calculate(
 
     # r shape: (nquadSteps-1, Nk)
     r = kk_grid[1:].reshape(-1, 1, 1) / logk_grid
-    r2 = r ** 2
+    r2 = np.square(r)
 
     # mumin, mumax: shape (nquadSteps-1, Nk)
     mumin = np.maximum(-1.0, (1.0 + r2 - rmax2) / (2.0 * r))
@@ -81,10 +81,10 @@ def calculate(
 
     # Compute SPT kernels F2evQ and G2evQ (lines 404-411)
     AngleEvQ = (x - r) / y
-    AngleEvQ2 = AngleEvQ ** 2
+    AngleEvQ2 = np.square(AngleEvQ)
     fsum = fp + fkmp
 
-    S2evQ = AngleEvQ ** 2 - 1./3.
+    S2evQ = AngleEvQ2 - 1./3.
     F2evQ = (1.0/2.0 + 3.0/14.0 * A + (1.0/2.0 - 3.0/14.0 * A) * AngleEvQ2 +
              AngleEvQ / 2.0 * (y/r + r/y))
     G2evQ = (3.0/14.0 * A * fsum + 3.0/14.0 * ApOverf0 +
@@ -135,7 +135,7 @@ def calculate(
 
     # I2uudd1BpC: Lines 435-436
     I2uudd1BpC_B = np.sum(wpsl * (
-        1.0 / 4.0 * (1.0 - x2) * (fp * fp + fkmpr2 ** 2 / y4)
+        1.0 / 4.0 * (1.0 - x2) * (fp * fp + np.square(fkmpr2) / y4)
         + fp * fkmpr2 * (-1.0 + x2) / y2 / 2.0
         ), axis=0)
 
@@ -178,13 +178,13 @@ def calculate(
 
     # I4uuuu2BpC: Line 449
     I4uuuu2BpC_B = np.sum(wpsl * (
-        3.0 * fkmp**2 * fp**2 * r2 * (-1.0 + x2) ** 2 / (16.0 * y4)
+        3.0 * np.square(fkmp) * np.square(fp) * r2 * np.square(-1.0 + x2) / (16.0 * y4)
         ), axis=0)
 
     # I4uuuu3BpC: Lines 451-452
     I4uuuu3BpC_B = np.sum(wpsl * (
         -(
-            fkmp**2 * fp**2 * (-1.0 + x2) * (2.0 + 3.0 * r * (-4.0 * x + r * (-1.0 + 5.0 * x2)))
+            np.square(fkmp) * np.square(fp) * (-1.0 + x2) * (2.0 + 3.0 * r * (-4.0 * x + r * (-1.0 + 5.0 * x2)))
         )
         / (8.0 * y2 * y2)
         ), axis=0)
@@ -192,11 +192,11 @@ def calculate(
     # I4uuuu4BpC: Lines 454-455
     I4uuuu4BpC_B = np.sum(wpsl * (
         (
-            fkmp**2 * fp**2 * (
+            np.square(fkmp) * np.square(fp) * (
                 -4.0
                 + 8.0 * rx * (3.0 - 5.0 * x2)
                 + 12.0 * x2
-                + r2 * (3.0 - 30.0 * x2 + 35.0 * x2 ** 2)
+                + r2 * (3.0 - 30.0 * x2 + 35.0 * np.square(x2))
             )
         )
         / (16.0 * y4)
@@ -223,8 +223,8 @@ def calculate(
     Ps22_B = np.sum(wpsl * (
         1.0 / 2.0 * r2
         * (
-            1.0 / 2.0 * (S2evQ ** 2 - 4.0 / 9.0 * Pratio)
-            + 1.0 / 2.0 * (S2evQ ** 2 - 4.0 / 9.0 * PratioInv)
+            1.0 / 2.0 * (np.square(S2evQ) - 4.0 / 9.0 * Pratio)
+            + 1.0 / 2.0 * (np.square(S2evQ) - 4.0 / 9.0 * PratioInv)
         )
         ), axis=0)
     Pb2theta_B = np.sum(wpsl * (r2 * G2evQ), axis=0)
@@ -284,7 +284,7 @@ def calculate(
     # R-function uses r from kk[2] to kk[nquadSteps-1] (see line 604: i=2 to nquadSteps-1)
     fp_r = fkk[1:-1].reshape(-1 , 1, 1)
     r_r = kk_grid[1:-1].reshape(-1, 1, 1) / logk_grid
-    r2_r = r_r ** 2
+    r2_r = np.square(r_r)
     psl_r = np.stack((Pkk[1:-1], Pkk_nw[1:-1]), axis=1)[:,:,None] # shape (nquadSteps-2, 2, 1)
 
     # Gauss-Legendre points in [-1, 1] (fixed limits for R-functions)
@@ -295,7 +295,7 @@ def calculate(
 
     # R-function kernels (lines 618-636 in C)
     AngleEvR = -x_r
-    AngleEvR2 = AngleEvR ** 2
+    AngleEvR2 = np.square(AngleEvR)
 
     F2evR = (1.0/2.0 + 3.0/14.0 * A + (1.0/2.0 - 3.0/14.0 * A) * AngleEvR2 +
              AngleEvR / 2.0 * (1.0/r_r + r_r))
@@ -325,7 +325,7 @@ def calculate(
     P13uu_B = np.sum(wpsl_r * (6.* r2_r * G3K * fk), axis=0)
 
     sigma32PSL_B = np.sum(wpsl_r * (
-        ( 5.0* r2_r * (7. - 2*r2_r + 4*r_r*x_r + 6*(-2 + r2_r)*x2_r - 12*r_r*x2_r*x_r + 9*x2_r*x2_r))
+        ( 5.0* r2_r * (7. - 2*r2_r + 4*r_r*x_r + 6*(-2 + r2_r)*x2_r - 12*r_r*x2_r*x_r + 9*np.square(x2_r)))
         / (24.0 * y2_r)
     ), axis=0)
 
@@ -407,7 +407,7 @@ def calculate(
     I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
 
     # I4uuuu3D: Line 732-733 (subtract k^2 * sigma2v * f(k)^2 * P_L(k))
-    I4uuuu3BpC = I4uuuu3BpC - logk_grid2 * sigma2v * fk_grid**2 * pkl_k
+    I4uuuu3BpC = I4uuuu3BpC - logk_grid2 * sigma2v * np.square(fk_grid) * pkl_k
 
     return KFunctionsOut(
         P22dd, P22du, P22uu,
