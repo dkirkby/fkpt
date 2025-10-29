@@ -164,7 +164,7 @@ def measure_kfunctions(
     )
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Initialized k-functions input in {1e3 * elapsed_time:.1f} ms")
+    print(f"Initialized k-functions input in {1e3 * elapsed_time:.2f} ms")
 
     # kernel constants
     if False: # _KERNELS_LCDMfk_ on line 287
