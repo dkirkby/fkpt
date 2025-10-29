@@ -38,6 +38,10 @@ def benchmark_on_device(device, kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v, nr
 
     if include_wrapper:
         # Benchmark the full wrapper function (like test_jax.py does)
+        # Clear cache to ensure fresh conversion for this device
+        from fkpt.calculate_jax import _jax_cache
+        _jax_cache.clear()
+
         with jax.default_device(device):
             # Warm-up run
             print(f"  Warming up (JIT compilation + wrapper)...")
@@ -58,7 +62,7 @@ def benchmark_on_device(device, kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v, nr
         logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid, dtype=jnp.float64)
         kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid, dtype=jnp.float64)
         Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
-        Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)
+        Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)  # Use pre-computed NumPy Y2
         xxQ_jax = jnp.asarray(kfuncs_in.xxQ, dtype=jnp.float64)
         wwQ_jax = jnp.asarray(kfuncs_in.wwQ, dtype=jnp.float64)
         xxR_jax = jnp.asarray(kfuncs_in.xxR, dtype=jnp.float64)
