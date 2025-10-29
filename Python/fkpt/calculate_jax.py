@@ -541,10 +541,9 @@ def _calculate_jax_core(
     )
 
 
-# Cache for JAX-converted arrays to avoid repeated NumPy→JAX conversion overhead
-# Key: (id(kfuncs_in), device_id) → cached JAX arrays
-# Device-specific caching ensures arrays on the correct device
-_jax_cache = {}
+# Module-level cache for static arrays (everything except Y and Y2)
+# These arrays don't change between calls: k_in, grids, and quadrature nodes
+_static_arrays_jax = None
 
 def calculate(
         kfuncs_in: KFunctionsIn,
@@ -555,14 +554,9 @@ def calculate(
     This function accepts numpy arrays (via KFunctionsIn), converts them to JAX arrays,
     runs the JIT-compiled calculation, and converts results back to numpy arrays.
 
-    Performance optimization: The first call with a given kfuncs_in converts all NumPy
-    arrays (including the pre-computed Y2 from util.init_cubic_spline) to JAX arrays
-    and caches them. Subsequent calls reuse the cached JAX arrays, avoiding conversion
-    overhead.
-
-    Note: Y2 is pre-computed using NumPy's CPU-optimized init_cubic_spline (~10ms)
-    rather than JAX's GPU version (~48ms) because the tridiagonal solver algorithm
-    doesn't parallelize well. The NumPy version is 5x faster despite running on CPU.
+    Performance optimization: Static arrays (grids, quadrature nodes) are converted to
+    JAX once on the first call and reused. Y and Y2 are converted on every call since
+    they change when the input power spectrum changes.
 
     Args:
         kfuncs_in: Input data structure (uses numpy arrays from util.init_kfunctions)
@@ -571,42 +565,29 @@ def calculate(
     Returns:
         KFunctionsOut containing numpy arrays (compatible with calculate_numpy output)
     """
-    # Check cache first - use device-specific cache key
-    # Get the current default device to ensure arrays are cached per-device
-    import jax
-    try:
-        # Get the current default device from context
-        # Arrays created with jnp.asarray will be placed on this device
-        current_device_list = jax.devices()
-        if current_device_list:
-            current_device = str(current_device_list[0])
-        else:
-            current_device = "default"
-    except:
-        current_device = "default"
+    global _static_arrays_jax
 
-    cache_key = (id(kfuncs_in), current_device)
-    if cache_key not in _jax_cache:
-        # Convert numpy arrays to JAX arrays with explicit float64 dtype
-        # This is critical to match NumPy precision and avoid numerical differences
+    # First call: convert static arrays to JAX and cache them
+    if _static_arrays_jax is None:
         k_in_jax = jnp.asarray(kfuncs_in.k_in, dtype=jnp.float64)
         logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid, dtype=jnp.float64)
         kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid, dtype=jnp.float64)
-        Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
-        Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)  # Use pre-computed NumPy Y2
         xxQ_jax = jnp.asarray(kfuncs_in.xxQ, dtype=jnp.float64)
         wwQ_jax = jnp.asarray(kfuncs_in.wwQ, dtype=jnp.float64)
         xxR_jax = jnp.asarray(kfuncs_in.xxR, dtype=jnp.float64)
         wwR_jax = jnp.asarray(kfuncs_in.wwR, dtype=jnp.float64)
 
-        # Cache all JAX arrays for future calls (specific to this device)
-        _jax_cache[cache_key] = (
-            k_in_jax, logk_grid_jax, kk_grid_jax, Y_jax, Y2_jax,
+        _static_arrays_jax = (
+            k_in_jax, logk_grid_jax, kk_grid_jax,
             xxQ_jax, wwQ_jax, xxR_jax, wwR_jax
         )
 
-    # Retrieve cached JAX arrays
-    k_in_jax, logk_grid_jax, kk_grid_jax, Y_jax, Y2_jax, xxQ_jax, wwQ_jax, xxR_jax, wwR_jax = _jax_cache[cache_key]
+    # Retrieve cached static arrays
+    k_in_jax, logk_grid_jax, kk_grid_jax, xxQ_jax, wwQ_jax, xxR_jax, wwR_jax = _static_arrays_jax
+
+    # Always convert Y and Y2 to JAX (they change on each call)
+    Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
+    Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)
 
     # Run JIT-compiled calculation
     results = _calculate_jax_core(
