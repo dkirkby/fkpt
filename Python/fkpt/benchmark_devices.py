@@ -39,8 +39,8 @@ def benchmark_on_device(device, kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v, nr
     if include_wrapper:
         # Benchmark the full wrapper function (like test_jax.py does)
         # Clear cache to ensure fresh conversion for this device
-        from fkpt.calculate_jax import _jax_cache
-        _jax_cache.clear()
+        import fkpt.calculate_jax
+        fkpt.calculate_jax._static_arrays_jax = None
 
         with jax.default_device(device):
             # Warm-up run
@@ -57,12 +57,15 @@ def benchmark_on_device(device, kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v, nr
                 times.append((t1 - t0) * 1000)  # Convert to ms
     else:
         # Benchmark only the core function (pure computation)
+        # Import JAX cubic spline function
+        from fkpt.calculate_jax import init_cubic_spline_jax
+
         # Convert numpy arrays to JAX arrays with explicit float64 dtype
         k_in_jax = jnp.asarray(kfuncs_in.k_in, dtype=jnp.float64)
         logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid, dtype=jnp.float64)
         kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid, dtype=jnp.float64)
         Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
-        Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)  # Use pre-computed NumPy Y2
+        Y2_jax = init_cubic_spline_jax(k_in_jax, Y_jax)  # Compute Y2 using JAX
         xxQ_jax = jnp.asarray(kfuncs_in.xxQ, dtype=jnp.float64)
         wwQ_jax = jnp.asarray(kfuncs_in.wwQ, dtype=jnp.float64)
         xxR_jax = jnp.asarray(kfuncs_in.xxR, dtype=jnp.float64)

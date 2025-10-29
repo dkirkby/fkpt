@@ -48,11 +48,10 @@ def init_kfunctions(
         nquadSteps: int, NQ: int=10, NR: int=10
         ) -> KFunctionsIn:
 
-    # Initialize simultaneous cubic spline interpolation for Y(k) = [P(k), P_nw(k), f(k)]
-    # by precomputing 2nd derivatives Y2(k)
+    # Prepare Y(k) = [P(k), P_nw(k), f(k)] for cubic spline interpolation
+    # Note: Y2 (second derivatives) are computed separately in calculate_numpy and calculate_jax
     X = k_in
     Y = np.vstack([Pk_in, Pk_nw_in, fk_in / f0])
-    Y2 = init_cubic_spline(X, Y)
 
     # Initialize logarithmic output k grid
     logk_grid = np.geomspace(kmin, kmax, Nk)
@@ -67,7 +66,7 @@ def init_kfunctions(
     xxR, wwR = roots_legendre(NR)
 
     return KFunctionsIn(
-        k_in, logk_grid, kk_grid, Y, Y2,
+        k_in, logk_grid, kk_grid, Y,
         xxQ, wwQ, xxR, wwR,
     )
 

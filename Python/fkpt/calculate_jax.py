@@ -541,7 +541,7 @@ def _calculate_jax_core(
     )
 
 
-# Module-level cache for static arrays (everything except Y and Y2)
+# Module-level cache for static arrays (everything except Y)
 # These arrays don't change between calls: k_in, grids, and quadrature nodes
 _static_arrays_jax = None
 
@@ -555,8 +555,8 @@ def calculate(
     runs the JIT-compiled calculation, and converts results back to numpy arrays.
 
     Performance optimization: Static arrays (grids, quadrature nodes) are converted to
-    JAX once on the first call and reused. Y and Y2 are converted on every call since
-    they change when the input power spectrum changes.
+    JAX once on the first call and reused. Y is converted on every call and Y2 (second
+    derivatives for cubic spline) is computed using JAX's JIT-compiled init_cubic_spline_jax.
 
     Args:
         kfuncs_in: Input data structure (uses numpy arrays from util.init_kfunctions)
@@ -585,9 +585,9 @@ def calculate(
     # Retrieve cached static arrays
     k_in_jax, logk_grid_jax, kk_grid_jax, xxQ_jax, wwQ_jax, xxR_jax, wwR_jax = _static_arrays_jax
 
-    # Always convert Y and Y2 to JAX (they change on each call)
+    # Convert Y to JAX and compute Y2 using JAX cubic spline
     Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
-    Y2_jax = jnp.asarray(kfuncs_in.Y2, dtype=jnp.float64)
+    Y2_jax = init_cubic_spline_jax(k_in_jax, Y_jax)
 
     # Run JIT-compiled calculation
     results = _calculate_jax_core(

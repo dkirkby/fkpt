@@ -1,7 +1,7 @@
 import numpy as np
 
 from fkpt.types import KFunctionsIn, KFunctionsOut, Float64NDArray
-from fkpt.util import eval_cubic_spline
+from fkpt.util import init_cubic_spline, eval_cubic_spline
 
 
 def calculate(
@@ -11,9 +11,12 @@ def calculate(
 
     # Unpack inputs
     (
-        k_in, logk_grid, kk_grid, Y, Y2,
+        k_in, logk_grid, kk_grid, Y,
         xxQ, wwQ, xxR, wwR,
     )  = kfuncs_in
+
+    # Compute second derivatives for cubic spline interpolation
+    Y2 = init_cubic_spline(k_in, Y)
 
     def interpolator(x: Float64NDArray) -> Float64NDArray:
         return eval_cubic_spline(k_in, Y, Y2, x)

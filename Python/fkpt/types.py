@@ -12,7 +12,6 @@ class KFunctionsIn(NamedTuple):
     logk_grid: Float64NDArray
     kk_grid: Float64NDArray
     Y: Float64NDArray
-    Y2: Float64NDArray
     xxQ: Float64NDArray
     wwQ: Float64NDArray
     xxR: Float64NDArray
