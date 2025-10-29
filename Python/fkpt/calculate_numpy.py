@@ -233,19 +233,16 @@ def calculate(
     # Calculate scaling for Q-functions (line 561-563, 565-569 in C)
     scale_Q = 0.25 * logk_grid2 / np.pi ** 2
 
-    # Apply trapezoidal rule: sum of (f_A * P_A + f_B * P_B) * dk / 2
-    #def trapsumQ_orig(B):
-    #    A = np.vstack([np.zeros((1, Nk)), B[:-1, :]])
-    #    return np.sum(dkk_reshaped * (A * PSLA + B * PSLB) / 2.0, axis=0) * scale_Q
-
-    # Eliminate memory allocation for A and perform all array ops in place
+    # Apply trapezoidal rule with in-place operations to reduce memory allocations
     def trapsumQ(B):
+        # First multiply creates a copy, then we can work in-place
         B = B * scale_Q * PSLB
-        #B[1:] += B[:-1]
-        #B *= dkk_reshaped
-        #B[0] += np.sum(B[1:], axis=0)
-        #return B[0]
-        return np.sum((B[:-1] + B[1:]) * dkk_reshaped[1:], axis=0) + B[0] * dkk_reshaped[0]
+        # Accumulate pairwise sums in-place (effectively B[i] += B[i-1] for i >= 1)
+        B[1:] += B[:-1]
+        # Multiply by step sizes in-place
+        B *= dkk_reshaped
+        # Sum all accumulated values
+        return np.sum(B, axis=0)
 
     P22dd = trapsumQ(P22dd_B)
     P22du = trapsumQ(P22du_B)
@@ -360,16 +357,18 @@ def calculate(
     pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
     scale_R = logk_grid2 / (8.0 * np.pi ** 2) * pkl_k
 
-    # Trapezoidal integration (line 679-683 in C)
+    # Trapezoidal integration with in-place operations
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def trapsumR(B):
+        # First multiply creates a copy, then we can work in-place
         B = B * scale_R
-        #B[1:] += B[:-1]
-        #B = B * dkk_r
-        #B[0] += np.sum(B[1:], axis=0)
-        #return B[0]
-        return np.sum((B[:-1] + B[1:]) * dkk_r[1:], axis=0) + B[0] * dkk_r[0]
+        # Accumulate pairwise sums in-place
+        B[1:] += B[:-1]
+        # Multiply by step sizes in-place
+        B *= dkk_r
+        # Sum all accumulated values
+        return np.sum(B, axis=0)
 
     I1udd1a = trapsumR(I1udd1a_B)
     I2uud1a = trapsumR(I2uud1a_B)
