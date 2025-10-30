@@ -1,4 +1,4 @@
-from typing import NamedTuple, Callable
+from typing import NamedTuple, Type
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -76,3 +76,5 @@ class AbsCalculator(ABC):
             KFunctionsOut containing all computed k-functions
         """
         pass
+
+KFunctionsCalculator = Type[AbsCalculator]

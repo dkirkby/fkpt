@@ -10,7 +10,7 @@ def main():
     snapshot = load_snapshot(SNAPSHOT_FILE)
 
     # Measure k-functions using available calculators
-    for calc_name, calculator in [('NumPy', NumpyCalculator()), ('JAX', JaxCalculator())]:
+    for calc_name, calculator in [('NumPy', NumpyCalculator), ('JAX', JaxCalculator)]:
         print(f"\nMeasuring k-functions using {calc_name} calculator:")
         measure_kfunctions(calculator, snapshot, nruns=100)
 

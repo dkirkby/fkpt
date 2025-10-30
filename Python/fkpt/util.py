@@ -4,7 +4,7 @@ import numpy as np
 
 from scipy.special import roots_legendre
 
-from fkpt.types import AbsCalculator, Float64NDArray, KFunctionsInitData, KFunctionsOut
+from fkpt.types import Float64NDArray, KFunctionsInitData, KFunctionsOut, KFunctionsCalculator
 from fkpt.snapshot import KFunctionsSnapshot
 
 
@@ -56,7 +56,7 @@ def validate_kfunctions(
     return ok
 
 def measure_kfunctions(
-        calculator: AbsCalculator,
+        calculator_cls: KFunctionsCalculator,
         snapshot: KFunctionsSnapshot,
         nruns: int = 10
         ) -> None:
@@ -81,10 +81,16 @@ def measure_kfunctions(
     print(f"setup_kfunctions in {1e3 * elapsed_time:.2f} ms")
 
     start_time = time.time()
+    calculator = calculator_cls()
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"{calculator_cls.__name__}.ctor in {1e3 * elapsed_time:.2f} ms")
+
+    start_time = time.time()
     calculator.initialize(kfuncs_in)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"calculator.initialize in {1e3 * elapsed_time:.2f} ms")
+    print(f"{calculator_cls.__name__}.initialize in {1e3 * elapsed_time:.2f} ms")
 
     # kernel constants
     if False: # _KERNELS_LCDMfk_ on line 287
@@ -108,7 +114,7 @@ def measure_kfunctions(
     kfuncs_out = calculator.evaluate(Pk_in, Pk_nw_in, fk_in, A, ApOverf0, CFD3, CFD3p, sigma2v, f0)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"First calculator.evaluate in {1e3 * elapsed_time:.2f} ms")
+    print(f"First {calculator_cls.__name__}.evaluate in {1e3 * elapsed_time:.2f} ms")
 
     # Validate results
     if validate_kfunctions(kfuncs_out, snapshot):
@@ -123,4 +129,4 @@ def measure_kfunctions(
     end_time = time.time()
 
     elapsed_time = end_time - start_time
-    print(f"Average time over {nruns} runs: {1e3 * elapsed_time / nruns:.1f} ms")
+    print(f"Average {calculator_cls.__name__}.evaluate over {nruns} runs: {1e3 * elapsed_time / nruns:.1f} ms")
