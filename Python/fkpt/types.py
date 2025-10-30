@@ -6,18 +6,6 @@ from numpy.typing import NDArray
 
 Float64NDArray = NDArray[np.float64]  # Float64NDArray[float] in python 3.10+
 
-KInterpolator = Callable[[Float64NDArray], Float64NDArray]
-
-class KFunctionsIn(NamedTuple):
-    k_in: Float64NDArray
-    logk_grid: Float64NDArray
-    kk_grid: Float64NDArray
-    Y: Float64NDArray
-    xxQ: Float64NDArray
-    wwQ: Float64NDArray
-    xxR: Float64NDArray
-    wwR: Float64NDArray
-
 class KFunctionsInitData(NamedTuple):
     k_in: Float64NDArray
     logk_grid: Float64NDArray
@@ -56,9 +44,6 @@ class KFunctionsOut(NamedTuple):
     sigma32PSL: Float64NDArray
     pkl: Float64NDArray
 
-# Args are (KFunctionsIn, A, ApOverf0, CFD3, CFD3p, sigma2v) -> KFunctionsOut
-KFunctionsCalculator = Callable[[KFunctionsIn, float, float, float, float, float], KFunctionsOut]
-
 class AbsCalculator(ABC):
     """Abstract base class for k-functions calculators."""
 
@@ -72,14 +57,20 @@ class AbsCalculator(ABC):
         pass
 
     @abstractmethod
-    def evaluate(self, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray,
-                 fk_in: Float64NDArray) -> KFunctionsOut:
+    def evaluate(self, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray, fk_in: Float64NDArray,
+                 A: float, ApOverf0: float, CFD3: float, CFD3p: float, sigma2v: float, f0: float) -> KFunctionsOut:
         """Evaluate k-functions given input power spectra.
 
         Args:
             Pk_in: Linear power spectrum values at k-grid points
             Pk_nw_in: No-wiggle linear power spectrum values at k-grid points
             fk_in: Growth rate f(k) values at k-grid points
+            A: Kernel constant A
+            ApOverf0: Kernel constant Ap/f0
+            CFD3: Kernel constant CFD3
+            CFD3p: Kernel constant CFD3'
+            sigma2v: Velocity dispersion sigma^2_v
+            f0: Growth rate at z=0
 
         Returns:
             KFunctionsOut containing all computed k-functions

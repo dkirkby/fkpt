@@ -4,45 +4,15 @@ import numpy as np
 
 from scipy.special import roots_legendre
 
-from fkpt.types import AbsCalculator, Float64NDArray, KFunctionsIn, KFunctionsInitData, KFunctionsOut, KFunctionsCalculator
+from fkpt.types import AbsCalculator, Float64NDArray, KFunctionsInitData, KFunctionsOut
 from fkpt.snapshot import KFunctionsSnapshot
 
-
-def init_kfunctions(
-        k_in: Float64NDArray,
-        Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray,
-        fk_in: Float64NDArray, f0: float,
-        kmin: int, kmax: int, Nk: int,
-        nquadSteps: int, NQ: int=10, NR: int=10
-        ) -> KFunctionsIn:
-
-    # Prepare Y(k) = [P(k), P_nw(k), f(k)] for cubic spline interpolation
-    # Note: Y2 (second derivatives) are computed separately in calculate_numpy and calculate_jax
-    X = k_in
-    Y = np.vstack([Pk_in, Pk_nw_in, fk_in / f0])
-
-    # Initialize logarithmic output k grid
-    logk_grid = np.geomspace(kmin, kmax, Nk)
-
-    # Set up quadrature k grid
-    pmin = max(k_in[0], 0.01 * kmin)
-    pmax = min(k_in[-1], 16.0 * kmax)
-    kk_grid = np.geomspace(pmin, pmax, nquadSteps)
-
-    # Initialize Gauss-Legendre nodes and weights on [-1,1]
-    xxQ, wwQ = roots_legendre(NQ)
-    xxR, wwR = roots_legendre(NR)
-
-    return KFunctionsIn(
-        k_in, logk_grid, kk_grid, Y,
-        xxQ, wwQ, xxR, wwR,
-    )
 
 def setup_kfunctions(
         k_in: Float64NDArray,
         kmin: int, kmax: int, Nk: int,
         nquadSteps: int, NQ: int=10, NR: int=10
-        ) -> KFunctionsIn:
+        ) -> KFunctionsInitData:
 
     # Initialize logarithmic output k grid
     logk_grid = np.geomspace(kmin, kmax, Nk)

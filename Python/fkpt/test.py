@@ -1,7 +1,7 @@
 from fkpt.snapshot import load_snapshot
 from fkpt.util import measure_kfunctions
 from fkpt.calculate_numpy import NumpyCalculator
-from fkpt.calculate_jax import calculate as calculate_jax
+#from fkpt.calculate_jax import calculate as calculate_jax
 
 def main():
 
