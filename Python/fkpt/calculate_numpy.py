@@ -19,6 +19,28 @@ class NumpyCalculator(AbsCalculator):
         self.spline_logk = None
         self.spline_kk = None
         self.spline_y = None
+        # Precomputed Q-function quantities
+        self.logk_grid2 = None
+        self.dkk = None
+        self.dkk_reshaped = None
+        self.scale_Q = None
+        self.r = None
+        self.r2 = None
+        self.x = None
+        self.w = None
+        self.x2 = None
+        self.y2 = None
+        self.y = None
+        # Precomputed R-function quantities
+        self.r_r = None
+        self.r2_r = None
+        self.x_r = None
+        self.w_r = None
+        self.x2_r = None
+        self.y2_r = None
+        self.AngleEvR = None
+        self.AngleEvR2 = None
+        self.dkk_r = None
 
     def initialize(self, data: KFunctionsInitData) -> None:
         """Initialize the calculator with grid data and quadrature points.
@@ -34,6 +56,12 @@ class NumpyCalculator(AbsCalculator):
         self.xxR = data.xxR
         self.wwR = data.wwR
 
+        # Pre-compute commonly used grid quantities
+        self.logk_grid2 = self.logk_grid * self.logk_grid
+        self.dkk = np.diff(self.kk_grid)
+        self.dkk_reshaped = self.dkk.reshape(-1, 1, 1)
+        self.scale_Q = 0.25 * self.logk_grid2 / np.pi ** 2
+
         # Pre-compute spline coefficients for fixed interpolation grids
         # These grids don't change between evaluate() calls, so we can
         # pre-compute the interpolation coefficients once here
@@ -44,37 +72,52 @@ class NumpyCalculator(AbsCalculator):
         # 2. Coefficients for interpolating onto kk_grid
         self.spline_kk = self._init_cubic_spline(self.k_in, self.kk_grid)
 
-        # 3. Coefficients for interpolating onto logk_grid * y (for Q-functions)
-        # Compute y values using the same logic as in evaluate()
-        k_in = self.k_in
-        logk_grid = self.logk_grid
-        kk_grid = self.kk_grid
-        xxQ = self.xxQ
-
-        # Compute variable integration limits for mu
-        rmax = k_in[-1] / logk_grid
-        rmin = k_in[0] / logk_grid
+        # 3. Pre-compute Q-function quantities and spline coefficients
+        # Compute variable integration limits for mu (local variables only needed here)
+        rmax = self.k_in[-1] / self.logk_grid
+        rmin = self.k_in[0] / self.logk_grid
         rmax2 = rmax * rmax
         rmin2 = rmin * rmin
 
-        r = kk_grid[1:].reshape(-1, 1, 1) / logk_grid
-        r2 = np.square(r)
+        self.r = self.kk_grid[1:].reshape(-1, 1, 1) / self.logk_grid
+        self.r2 = np.square(self.r)
 
-        mumin = np.maximum(-1.0, (1.0 + r2 - rmax2) / (2.0 * r))
-        mumax = np.minimum(1.0, (1.0 + r2 - rmin2) / (2.0 * r))
-        mumax = np.divide(0.5, r, out=mumax, where=r >= 0.5)
+        mumin = np.maximum(-1.0, (1.0 + self.r2 - rmax2) / (2.0 * self.r))
+        mumax = np.minimum(1.0, (1.0 + self.r2 - rmin2) / (2.0 * self.r))
+        mumax = np.divide(0.5, self.r, out=mumax, where=self.r >= 0.5)
 
-        # Scale Gauss-Legendre nodes to [mumin, mumax]
+        # Scale Gauss-Legendre nodes and weights to [mumin, mumax]
         dmu = mumax - mumin
-        xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
+        xGL = 0.5 * (dmu * self.xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
+        wGL = 0.5 * dmu * self.wwQ.reshape(-1, 1, 1, 1)
 
-        # Compute y values
-        x = xGL
-        y2 = 1.0 + r2 - 2.0 * r * x
-        y = np.sqrt(y2)
+        # Compute x, w, x2, y2, y values for Q-function integration
+        self.x = xGL
+        self.w = wGL
+        self.x2 = self.x * self.x
+        self.y2 = 1.0 + self.r2 - 2.0 * self.r * self.x
+        self.y = np.sqrt(self.y2)
 
         # Pre-compute coefficients for interpolating at logk_grid * y
-        self.spline_y = self._init_cubic_spline(k_in, logk_grid * y)
+        self.spline_y = self._init_cubic_spline(self.k_in, self.logk_grid * self.y)
+
+        # Pre-compute R-function quantities
+        # R-function uses r from kk[1:-1] (indices 1 to nquadSteps-2)
+        self.r_r = self.kk_grid[1:-1].reshape(-1, 1, 1) / self.logk_grid
+        self.r2_r = np.square(self.r_r)
+
+        # Gauss-Legendre points in [-1, 1] (fixed limits for R-functions)
+        self.x_r = self.xxR.reshape(-1, 1, 1, 1)
+        self.w_r = self.wwR.reshape(-1, 1, 1, 1)
+        self.x2_r = self.x_r * self.x_r
+        self.y2_r = 1.0 + self.r2_r - 2.0 * self.r_r * self.x_r
+
+        # R-function angles (independent of input parameters)
+        self.AngleEvR = -self.x_r
+        self.AngleEvR2 = np.square(self.AngleEvR)
+
+        # R-function trapezoidal integration spacing
+        self.dkk_r = self.dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def _calc_2nd_derivs(self, x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
         """Initialize a cubic spline interpolator by precomputing 2nd derivatives."""
@@ -180,47 +223,26 @@ class NumpyCalculator(AbsCalculator):
         # Interpolate onto quadrature grid using precomputed coefficients
         Pkk, Pkk_nw, fkk = self._eval_cubic_spline(Y, Y2, self.spline_kk).T
 
-        logk_grid2 = logk_grid * logk_grid
-        dkk = np.diff(kk_grid)
+        # Use precomputed grid quantities
+        logk_grid2 = self.logk_grid2
+        dkk = self.dkk
 
         # ============================================================================
         # Q-FUNCTIONS: Vectorized over ALL dimensions
         # ============================================================================
 
-        # Compute variable integration limits for mu
-        rmax = k_in[-1] / logk_grid  # shape (Nk,)
-        rmin = k_in[0] / logk_grid  # shape (Nk,)
-        rmax2 = rmax * rmax
-        rmin2 = rmin * rmin
+        # Use precomputed Q-function quantities
+        r = self.r
+        r2 = self.r2
+        x = self.x
+        w = self.w
+        x2 = self.x2
+        y2 = self.y2
+        y = self.y
 
         # Loop over quadrature k values
         # fp shape: (nquadSteps-1, 1, 1) - will broadcast to (nquadSteps-1, 1, Nk)
         fp = fkk[1:].reshape(-1, 1, 1)
-
-        # r shape: (nquadSteps-1, Nk)
-        r = kk_grid[1:].reshape(-1, 1, 1) / logk_grid
-        r2 = np.square(r)
-
-        # mumin, mumax: shape (nquadSteps-1, Nk)
-        mumin = np.maximum(-1.0, (1.0 + r2 - rmax2) / (2.0 * r))
-        mumax = np.minimum(1.0, (1.0 + r2 - rmin2) / (2.0 * r))
-
-        # Line 389-390 in C: if r >= 0.5, mumax = 0.5/r
-        mumax = np.divide(0.5, r, out=mumax, where=r >= 0.5)
-
-        # Scale Gauss-Legendre nodes and weights to [mumin, mumax]
-        # Shape: (NQ, nquadSteps-1, 1, Nk)
-        dmu = mumax - mumin
-        xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
-        wGL = 0.5 * dmu * wwQ.reshape(-1, 1, 1, 1)
-
-        # Perform Gauss-Legendre quadrature over mu
-        # All shapes: (NQ, nquadSteps-1, Nk)
-        x = xGL
-        w = wGL
-        x2 = x * x
-        y2 = 1.0 + r2 - 2.0 * r * x
-        y = np.sqrt(y2)
 
         # Interpolate power spectra at (ki * y) points using precomputed coefficients
         psl_w, psl_nw, fkmp = self._eval_cubic_spline(Y, Y2, self.spline_y).T
@@ -350,7 +372,10 @@ class NumpyCalculator(AbsCalculator):
 
         # Left and right endpoints for power spectra
         PSLB = np.stack((Pkk[1:], Pkk_nw[1:]), axis=1)[:,:,None] # shape (nQuadSteps-1, 2, 1)
-        dkk_reshaped = dkk.reshape(-1, 1, 1)  # shape (nQuadSteps-1, 1, 1)
+
+        # Use precomputed dkk_reshaped and scale_Q
+        dkk_reshaped = self.dkk_reshaped
+        scale_Q = self.scale_Q
 
         # Bias
         Pb1b2_B = np.sum(wpsl * (r2 * F2evQ), axis=0)
@@ -375,9 +400,6 @@ class NumpyCalculator(AbsCalculator):
             ), axis=0)
         Pb2theta_B = np.sum(wpsl * (r2 * G2evQ), axis=0)
         Pbs2theta_B = np.sum(wpsl * (r2 * S2evQ * G2evQ), axis=0)
-
-        # Calculate scaling for Q-functions
-        scale_Q = 0.25 * logk_grid2 / np.pi ** 2
 
         # Apply trapezoidal rule with optimized operations
         def trapsumQ(B):
@@ -420,21 +442,19 @@ class NumpyCalculator(AbsCalculator):
         # Get f(k) at output k values
         fk = fout  # already computed above
 
-        # R-function uses r from kk[2] to kk[nquadSteps-1]
+        # Use precomputed R-function quantities
+        r_r = self.r_r
+        r2_r = self.r2_r
+        x_r = self.x_r
+        w_r = self.w_r
+        x2_r = self.x2_r
+        y2_r = self.y2_r
+        AngleEvR = self.AngleEvR
+        AngleEvR2 = self.AngleEvR2
+
+        # R-function uses fp from kk[1:-1] and psl from Pkk[1:-1]
         fp_r = fkk[1:-1].reshape(-1 , 1, 1)
-        r_r = kk_grid[1:-1].reshape(-1, 1, 1) / logk_grid
-        r2_r = np.square(r_r)
         psl_r = np.stack((Pkk[1:-1], Pkk_nw[1:-1]), axis=1)[:,:,None] # shape (nquadSteps-2, 2, 1)
-
-        # Gauss-Legendre points in [-1, 1] (fixed limits for R-functions)
-        x_r = xxR.reshape(-1, 1, 1, 1)
-        w_r = wwR.reshape(-1, 1, 1, 1)
-        x2_r = x_r * x_r
-        y2_r = 1.0 + r2_r - 2.0 * r_r * x_r
-
-        # R-function kernels
-        AngleEvR = -x_r
-        AngleEvR2 = np.square(AngleEvR)
 
         F2evR = (1.0/2.0 + 3.0/14.0 * A + (1.0/2.0 - 3.0/14.0 * A) * AngleEvR2 +
                  AngleEvR / 2.0 * (1.0/r_r + r_r))
@@ -498,8 +518,8 @@ class NumpyCalculator(AbsCalculator):
         pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
         scale_R = logk_grid2 / (8.0 * np.pi ** 2) * pkl_k
 
-        # Trapezoidal integration with optimized operations
-        dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
+        # Use precomputed dkk_r for trapezoidal integration
+        dkk_r = self.dkk_r
 
         def trapsumR(B):
             # Scale input array (in-place is slightly slower)
