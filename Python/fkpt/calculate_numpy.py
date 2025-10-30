@@ -15,6 +15,10 @@ class NumpyCalculator(AbsCalculator):
         self.wwQ = None
         self.xxR = None
         self.wwR = None
+        # Precomputed spline interpolation coefficients
+        self.spline_logk = None
+        self.spline_kk = None
+        self.spline_y = None
 
     def initialize(self, data: KFunctionsInitData) -> None:
         """Initialize the calculator with grid data and quadrature points.
@@ -29,6 +33,48 @@ class NumpyCalculator(AbsCalculator):
         self.wwQ = data.wwQ
         self.xxR = data.xxR
         self.wwR = data.wwR
+
+        # Pre-compute spline coefficients for fixed interpolation grids
+        # These grids don't change between evaluate() calls, so we can
+        # pre-compute the interpolation coefficients once here
+
+        # 1. Coefficients for interpolating onto logk_grid
+        self.spline_logk = self._init_cubic_spline(self.k_in, self.logk_grid)
+
+        # 2. Coefficients for interpolating onto kk_grid
+        self.spline_kk = self._init_cubic_spline(self.k_in, self.kk_grid)
+
+        # 3. Coefficients for interpolating onto logk_grid * y (for Q-functions)
+        # Compute y values using the same logic as in evaluate()
+        k_in = self.k_in
+        logk_grid = self.logk_grid
+        kk_grid = self.kk_grid
+        xxQ = self.xxQ
+
+        # Compute variable integration limits for mu
+        rmax = k_in[-1] / logk_grid
+        rmin = k_in[0] / logk_grid
+        rmax2 = rmax * rmax
+        rmin2 = rmin * rmin
+
+        r = kk_grid[1:].reshape(-1, 1, 1) / logk_grid
+        r2 = np.square(r)
+
+        mumin = np.maximum(-1.0, (1.0 + r2 - rmax2) / (2.0 * r))
+        mumax = np.minimum(1.0, (1.0 + r2 - rmin2) / (2.0 * r))
+        mumax = np.divide(0.5, r, out=mumax, where=r >= 0.5)
+
+        # Scale Gauss-Legendre nodes to [mumin, mumax]
+        dmu = mumax - mumin
+        xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
+
+        # Compute y values
+        x = xGL
+        y2 = 1.0 + r2 - 2.0 * r * x
+        y = np.sqrt(y2)
+
+        # Pre-compute coefficients for interpolating at logk_grid * y
+        self.spline_y = self._init_cubic_spline(k_in, logk_grid * y)
 
     def _calc_2nd_derivs(self, x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
         """Initialize a cubic spline interpolator by precomputing 2nd derivatives."""
@@ -48,17 +94,50 @@ class NumpyCalculator(AbsCalculator):
             y2[k] = y2[k] * y2[k+1] + u[k if k < n-1 else n-2]
         return np.moveaxis(y2, 0, -1)
 
-    def _eval_cubic_spline(self, xa: Float64NDArray, ya: Float64NDArray, y2a: Float64NDArray, x: Float64NDArray) -> Float64NDArray:
-        """Evaluate the cubic spline interpolator at given x values assuming xa increasing."""
+    def _init_cubic_spline(self, xa: Float64NDArray, x: Float64NDArray) -> dict:
+        """Pre-compute cubic spline interpolation coefficients for given xa and x.
+
+        Args:
+            xa: The x-coordinates of the data points (must be increasing)
+            x: The x-coordinates where we want to evaluate the spline
+
+        Returns:
+            Dictionary containing precomputed coefficients needed for evaluation
+        """
         idx_hi = np.searchsorted(xa, x, side='right')
         idx_hi = np.clip(idx_hi, 1, xa.size - 1)
         idx_lo = idx_hi - 1
         h = xa[idx_hi] - xa[idx_lo]
         a = (xa[idx_hi] - x) / h
         b = (x - xa[idx_lo]) / h
+
+        return {
+            'idx_lo': idx_lo,
+            'idx_hi': idx_hi,
+            'h': h,
+            'a': a,
+            'b': b,
+            'h2_div_6': (h**2) / 6.0,
+            'a3_minus_a': a**3 - a,
+            'b3_minus_b': b**3 - b
+        }
+
+    def _eval_cubic_spline(self, ya: Float64NDArray, y2a: Float64NDArray, coeffs: dict) -> Float64NDArray:
+        """Evaluate the cubic spline using precomputed coefficients.
+
+        Args:
+            ya: The y-coordinates of the data points
+            y2a: The second derivatives at the data points
+            coeffs: Dictionary of precomputed coefficients from _init_cubic_spline
+
+        Returns:
+            Interpolated values at the x-coordinates specified during initialization
+        """
         return np.moveaxis(
-            (a * ya[...,idx_lo] + b * ya[...,idx_hi] +
-            ((a**3 - a) * y2a[...,idx_lo] + (b**3 - b) * y2a[...,idx_hi]) * (h**2) / 6.0),
+            (coeffs['a'] * ya[..., coeffs['idx_lo']] +
+             coeffs['b'] * ya[..., coeffs['idx_hi']] +
+             (coeffs['a3_minus_a'] * y2a[..., coeffs['idx_lo']] +
+              coeffs['b3_minus_b'] * y2a[..., coeffs['idx_hi']]) * coeffs['h2_div_6']),
             0, -1)
 
     def evaluate(self, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray,
@@ -95,14 +174,11 @@ class NumpyCalculator(AbsCalculator):
         # Compute second derivatives for cubic spline interpolation
         Y2 = self._calc_2nd_derivs(k_in, Y)
 
-        def interpolator(x: Float64NDArray) -> Float64NDArray:
-            return self._eval_cubic_spline(k_in, Y, Y2, x)
+        # Interpolate onto output grid using precomputed coefficients
+        Pout, Pout_nw, fout = self._eval_cubic_spline(Y, Y2, self.spline_logk).T
 
-        # Interpolate onto output grid
-        Pout, Pout_nw, fout = interpolator(logk_grid).T
-
-        # Interpolate onto quadrature grid
-        Pkk, Pkk_nw, fkk = interpolator(kk_grid).T
+        # Interpolate onto quadrature grid using precomputed coefficients
+        Pkk, Pkk_nw, fkk = self._eval_cubic_spline(Y, Y2, self.spline_kk).T
 
         logk_grid2 = logk_grid * logk_grid
         dkk = np.diff(kk_grid)
@@ -146,15 +222,10 @@ class NumpyCalculator(AbsCalculator):
         y2 = 1.0 + r2 - 2.0 * r * x
         y = np.sqrt(y2)
 
-        # Interpolate power spectra at (ki * y) points
-        psl_w, psl_nw, fkmp = interpolator(logk_grid * y).T
+        # Interpolate power spectra at (ki * y) points using precomputed coefficients
+        psl_w, psl_nw, fkmp = self._eval_cubic_spline(Y, Y2, self.spline_y).T
         psl = np.concatenate((psl_w.T, psl_nw.T), axis=2) # shape (NQ, nquadSteps-1, 2, Nk)
         fkmp = fkmp.T # shape (NQ, nquadSteps-1, 1, Nk)
-        # Note that this concatenate() creates a copy but the alternative no-copy view is
-        # non-contiguous in memory so slower overall:
-        # out = interpolator(logk_grid * y)
-        # psl = np.moveaxis(out[..., :2], -1, -2)[:, :, 0, ...]
-        # fkmp = out.T[2].T
 
         # Compute SPT kernels F2evQ and G2evQ
         AngleEvQ = (x - r) / y
