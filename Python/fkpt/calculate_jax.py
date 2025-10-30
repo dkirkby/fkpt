@@ -23,7 +23,7 @@ from fkpt.types import KFunctionsInitData, KFunctionsOut, Float64NDArray, AbsCal
 
 
 @jit
-def init_cubic_spline_jax(x, y):
+def calc_2nd_derivs_jax(x, y):
     """JAX-compatible cubic spline initialization.
 
     Computes second derivatives for cubic spline interpolation.
@@ -604,7 +604,7 @@ class JaxCalculator(AbsCalculator):
         Y_jax = jnp.asarray(Y, dtype=jnp.float64)
 
         # Compute second derivatives for cubic spline
-        Y2_jax = init_cubic_spline_jax(self.k_in_jax, Y_jax)
+        Y2_jax = calc_2nd_derivs_jax(self.k_in_jax, Y_jax)
 
         # Run JIT-compiled calculation
         results = _calculate_jax_core(

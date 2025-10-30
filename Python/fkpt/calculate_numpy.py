@@ -30,7 +30,7 @@ class NumpyCalculator(AbsCalculator):
         self.xxR = data.xxR
         self.wwR = data.wwR
 
-    def _init_cubic_spline(self, x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
+    def _calc_2nd_derivs(self, x: Float64NDArray, y: Float64NDArray) -> Float64NDArray:
         """Initialize a cubic spline interpolator by precomputing 2nd derivatives."""
         n = len(x)
         y = np.moveaxis(y, -1, 0)
@@ -93,7 +93,7 @@ class NumpyCalculator(AbsCalculator):
         wwR = self.wwR
 
         # Compute second derivatives for cubic spline interpolation
-        Y2 = self._init_cubic_spline(k_in, Y)
+        Y2 = self._calc_2nd_derivs(k_in, Y)
 
         def interpolator(x: Float64NDArray) -> Float64NDArray:
             return self._eval_cubic_spline(k_in, Y, Y2, x)
