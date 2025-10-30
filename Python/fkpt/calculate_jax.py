@@ -19,7 +19,7 @@ import jax.numpy as jnp
 from jax import jit
 import numpy as np
 
-from fkpt.types import KFunctionsIn, KFunctionsOut, Float64NDArray
+from fkpt.types import KFunctionsInitData, KFunctionsOut, Float64NDArray, AbsCalculator
 
 
 @jit
@@ -547,62 +547,73 @@ def _calculate_jax_core(
     )
 
 
-# Module-level cache for static arrays (everything except Y)
-# These arrays don't change between calls: k_in, grids, and quadrature nodes
-_static_arrays_jax = None
+class JaxCalculator(AbsCalculator):
+    """JAX-accelerated k-functions calculator implementing the AbsCalculator interface.
 
-def calculate(
-        kfuncs_in: KFunctionsIn,
-        A: float, ApOverf0: float, CFD3: float, CFD3p: float, sigma2v: float
-    ) -> KFunctionsOut:
-    """JAX-accelerated k-functions calculator.
-
-    This function accepts numpy arrays (via KFunctionsIn), converts them to JAX arrays,
-    runs the JIT-compiled calculation, and converts results back to numpy arrays.
-
-    Performance optimization: Static arrays (grids, quadrature nodes) are converted to
-    JAX once on the first call and reused. Y is converted on every call and Y2 (second
-    derivatives for cubic spline) is computed using JAX's JIT-compiled init_cubic_spline_jax.
-
-    Args:
-        kfuncs_in: Input data structure (uses numpy arrays from util.init_kfunctions)
-        A, ApOverf0, CFD3, CFD3p, sigma2v: Scalar parameters
-
-    Returns:
-        KFunctionsOut containing numpy arrays (compatible with calculate_numpy output)
+    This calculator uses JAX for JIT compilation and automatic differentiation.
+    Grid data is converted to JAX arrays once during initialization and reused.
     """
-    global _static_arrays_jax
 
-    # First call: convert static arrays to JAX and cache them
-    if _static_arrays_jax is None:
-        k_in_jax = jnp.asarray(kfuncs_in.k_in, dtype=jnp.float64)
-        logk_grid_jax = jnp.asarray(kfuncs_in.logk_grid, dtype=jnp.float64)
-        kk_grid_jax = jnp.asarray(kfuncs_in.kk_grid, dtype=jnp.float64)
-        xxQ_jax = jnp.asarray(kfuncs_in.xxQ, dtype=jnp.float64)
-        wwQ_jax = jnp.asarray(kfuncs_in.wwQ, dtype=jnp.float64)
-        xxR_jax = jnp.asarray(kfuncs_in.xxR, dtype=jnp.float64)
-        wwR_jax = jnp.asarray(kfuncs_in.wwR, dtype=jnp.float64)
+    def __init__(self):
+        """Initialize an empty calculator. Call initialize() before evaluate()."""
+        self.k_in_jax = None
+        self.logk_grid_jax = None
+        self.kk_grid_jax = None
+        self.xxQ_jax = None
+        self.wwQ_jax = None
+        self.xxR_jax = None
+        self.wwR_jax = None
 
-        _static_arrays_jax = (
-            k_in_jax, logk_grid_jax, kk_grid_jax,
-            xxQ_jax, wwQ_jax, xxR_jax, wwR_jax
+    def initialize(self, data: KFunctionsInitData) -> None:
+        """Initialize the calculator with grid data and quadrature points.
+
+        Converts numpy arrays to JAX arrays and stores them for reuse.
+
+        Args:
+            data: Initialization data containing k-grid, quadrature points, etc.
+        """
+        self.k_in_jax = jnp.asarray(data.k_in, dtype=jnp.float64)
+        self.logk_grid_jax = jnp.asarray(data.logk_grid, dtype=jnp.float64)
+        self.kk_grid_jax = jnp.asarray(data.kk_grid, dtype=jnp.float64)
+        self.xxQ_jax = jnp.asarray(data.xxQ, dtype=jnp.float64)
+        self.wwQ_jax = jnp.asarray(data.wwQ, dtype=jnp.float64)
+        self.xxR_jax = jnp.asarray(data.xxR, dtype=jnp.float64)
+        self.wwR_jax = jnp.asarray(data.wwR, dtype=jnp.float64)
+
+    def evaluate(self, Pk_in: Float64NDArray, Pk_nw_in: Float64NDArray,
+                 fk_in: Float64NDArray, A: float, ApOverf0: float, CFD3: float,
+                 CFD3p: float, sigma2v: float, f0: float) -> KFunctionsOut:
+        """Evaluate k-functions given input power spectra.
+
+        Args:
+            Pk_in: Linear power spectrum values at k_in grid points
+            Pk_nw_in: No-wiggle linear power spectrum values at k_in grid points
+            fk_in: Growth rate f(k) values at k_in grid points
+            A: Cosmological parameter A
+            ApOverf0: Cosmological parameter Ap/f0
+            CFD3: Cosmological parameter CFD3
+            CFD3p: Cosmological parameter CFD3p
+            sigma2v: Velocity dispersion parameter
+            f0: Reference growth rate
+
+        Returns:
+            KFunctionsOut containing all computed k-functions (as numpy arrays)
+        """
+        # Stack input power spectra and normalize fk by f0
+        Y = np.stack([Pk_in, Pk_nw_in, fk_in / f0], axis=0)
+        Y_jax = jnp.asarray(Y, dtype=jnp.float64)
+
+        # Compute second derivatives for cubic spline
+        Y2_jax = init_cubic_spline_jax(self.k_in_jax, Y_jax)
+
+        # Run JIT-compiled calculation
+        results = _calculate_jax_core(
+            self.k_in_jax, self.logk_grid_jax, self.kk_grid_jax, Y_jax, Y2_jax,
+            self.xxQ_jax, self.wwQ_jax, self.xxR_jax, self.wwR_jax,
+            A, ApOverf0, CFD3, CFD3p, sigma2v
         )
 
-    # Retrieve cached static arrays
-    k_in_jax, logk_grid_jax, kk_grid_jax, xxQ_jax, wwQ_jax, xxR_jax, wwR_jax = _static_arrays_jax
+        # Convert JAX arrays back to numpy arrays
+        results_np = tuple(np.asarray(r) for r in results)
 
-    # Convert Y to JAX and compute Y2 using JAX cubic spline
-    Y_jax = jnp.asarray(kfuncs_in.Y, dtype=jnp.float64)
-    Y2_jax = init_cubic_spline_jax(k_in_jax, Y_jax)
-
-    # Run JIT-compiled calculation
-    results = _calculate_jax_core(
-        k_in_jax, logk_grid_jax, kk_grid_jax, Y_jax, Y2_jax,
-        xxQ_jax, wwQ_jax, xxR_jax, wwR_jax,
-        A, ApOverf0, CFD3, CFD3p, sigma2v
-    )
-
-    # Convert JAX arrays back to numpy arrays
-    results_np = tuple(np.asarray(r) for r in results)
-
-    return KFunctionsOut(*results_np)
+        return KFunctionsOut(*results_np)
