@@ -40,8 +40,8 @@ def calculate(
     rmax2 = rmax * rmax
     rmin2 = rmin * rmin
 
-    # Loop over quadrature k values (line 378 in C)
-    # fp shape: (nquadSteps-1, 1, 1) - will broadcast to (nquadSteps-1, 1, 1Nk)
+    # Loop over quadrature k values
+    # fp shape: (nquadSteps-1, 1, 1) - will broadcast to (nquadSteps-1, 1, Nk)
     fp = fkk[1:].reshape(-1, 1, 1)
 
     # r shape: (nquadSteps-1, Nk)
@@ -61,7 +61,7 @@ def calculate(
     xGL = 0.5 * (dmu * xxQ.reshape(-1, 1, 1, 1) + (mumax + mumin))
     wGL = 0.5 * dmu * wwQ.reshape(-1, 1, 1, 1)
 
-    # Perform Gauss-Legendre quadrature over mu (line 392)
+    # Perform Gauss-Legendre quadrature over mu
     # All shapes: (NQ, nquadSteps-1, Nk)
     x = xGL
     w = wGL
@@ -79,7 +79,7 @@ def calculate(
     # psl = np.moveaxis(out[..., :2], -1, -2)[:, :, 0, ...]
     # fkmp = out.T[2].T
 
-    # Compute SPT kernels F2evQ and G2evQ (lines 404-411)
+    # Compute SPT kernels F2evQ and G2evQ
     AngleEvQ = (x - r) / y
     AngleEvQ2 = np.square(AngleEvQ)
     fsum = fp + fkmp
@@ -100,46 +100,44 @@ def calculate(
     rx = r * x
     y4 = y2 ** 2
 
-    # P22 kernels (lines 414-416)
+    # P22 kernels
     P22dd_B = np.sum(wpsl * (2.0 * r2 * F2evQ**2), axis=0)
     P22du_B = np.sum(wpsl * (2.0 * r2 * F2evQ * G2evQ), axis=0)
     P22uu_B = np.sum(wpsl * (2.0 * r2 * G2evQ**2), axis=0)
 
     # ========== 5 THREE-POINT CORRELATION FUNCTION KERNELS (Q-part) ==========
-    # Lines 420-429 in C code
 
-    # I1udd1tA: Line 420
+    # I1udd1tA
     I1udd1tA_B = np.sum(wpsl * (
         2.0 * (fp * rx + fkmpr2 * (1.0 - rx) / y2) * F2evQ
         ), axis=0)
 
-    # I2uud1tA: Line 422
+    # I2uud1tA
     I2uud1tA_B = np.sum(wpsl * (-fp * fkmpr2 * (1.0 - x2) / y2 * F2evQ), axis=0)
 
-    # I2uud2tA: Lines 424-425
+    # I2uud2tA
     I2uud2tA_B = np.sum(wpsl * (
         2.0 * (fp * rx + fkmpr2 * (1.0 - rx) / y2) * G2evQ
         + fp * fkmp * (r2 * (1.0 - 3.0 * x2) + 2.0 * rx) / y2 * F2evQ
         ), axis=0)
 
-    # I3uuu2tA: Line 427
+    # I3uuu2tA
     I3uuu2tA_B = np.sum(wpsl * (fp * fkmpr2 * (x2 - 1.0) / y2 * G2evQ), axis=0)
 
-    # I3uuu3tA: Line 429
+    # I3uuu3tA
     I3uuu3tA_B = np.sum(wpsl * (
         fp * fkmp * (r2 * (1.0 - 3.0 * x2) + 2.0 * rx) / y2 * G2evQ
         ), axis=0)
 
     # ========== 7 BpC TERM KERNELS (Q-part, will become D-terms) ==========
-    # Lines 435-455 in C code
 
-    # I2uudd1BpC: Lines 435-436
+    # I2uudd1BpC
     I2uudd1BpC_B = np.sum(wpsl * (
         1.0 / 4.0 * (1.0 - x2) * (fp * fp + np.square(fkmpr2) / y4)
         + fp * fkmpr2 * (-1.0 + x2) / y2 / 2.0
         ), axis=0)
 
-    # I2uudd2BpC: Lines 438-441
+    # I2uudd2BpC
     I2uudd2BpC_B = np.sum(wpsl * (
         (
             fp * fp * (-1.0 + 3.0 * x2)
@@ -149,7 +147,7 @@ def calculate(
         / 4.0
         ), axis=0)
 
-    # I3uuud2BpC: Lines 443-444
+    # I3uuud2BpC
     I3uuud2BpC_B = np.sum(wpsl * (
         -(
             fkmp * fp * (
@@ -161,7 +159,7 @@ def calculate(
         / (2.0 * y2 * y2)
         ), axis=0)
 
-    # I3uuud3BpC: Lines 446-447
+    # I3uuud3BpC
     I3uuud3BpC_B = np.sum(wpsl * (
         (
             fkmp * fp * (
@@ -176,12 +174,12 @@ def calculate(
         / (2.0 * y4)
         ), axis=0)
 
-    # I4uuuu2BpC: Line 449
+    # I4uuuu2BpC
     I4uuuu2BpC_B = np.sum(wpsl * (
         3.0 * np.square(fkmp) * np.square(fp) * r2 * np.square(-1.0 + x2) / (16.0 * y4)
         ), axis=0)
 
-    # I4uuuu3BpC: Lines 451-452
+    # I4uuuu3BpC
     I4uuuu3BpC_B = np.sum(wpsl * (
         -(
             np.square(fkmp) * np.square(fp) * (-1.0 + x2) * (2.0 + 3.0 * r * (-4.0 * x + r * (-1.0 + 5.0 * x2)))
@@ -189,7 +187,7 @@ def calculate(
         / (8.0 * y2 * y2)
         ), axis=0)
 
-    # I4uuuu4BpC: Lines 454-455
+    # I4uuuu4BpC
     I4uuuu4BpC_B = np.sum(wpsl * (
         (
             np.square(fkmp) * np.square(fp) * (
@@ -230,7 +228,7 @@ def calculate(
     Pb2theta_B = np.sum(wpsl * (r2 * G2evQ), axis=0)
     Pbs2theta_B = np.sum(wpsl * (r2 * S2evQ * G2evQ), axis=0)
 
-    # Calculate scaling for Q-functions (line 561-563, 565-569 in C)
+    # Calculate scaling for Q-functions
     scale_Q = 0.25 * logk_grid2 / np.pi ** 2
 
     # Apply trapezoidal rule with optimized operations
@@ -271,10 +269,10 @@ def calculate(
     # R-FUNCTIONS: Also fully vectorized (NR, nquadSteps-2, Nk) - note nquadSteps-2!
     # ============================================================================
 
-    # Get f(k) at output k values (line 602-603 in C)
+    # Get f(k) at output k values
     fk = fout  # already computed above
 
-    # R-function uses r from kk[2] to kk[nquadSteps-1] (see line 604: i=2 to nquadSteps-1)
+    # R-function uses r from kk[2] to kk[nquadSteps-1]
     fp_r = fkk[1:-1].reshape(-1 , 1, 1)
     r_r = kk_grid[1:-1].reshape(-1, 1, 1) / logk_grid
     r2_r = np.square(r_r)
@@ -286,7 +284,7 @@ def calculate(
     x2_r = x_r * x_r
     y2_r = 1.0 + r2_r - 2.0 * r_r * x_r
 
-    # R-function kernels (lines 618-636 in C)
+    # R-function kernels
     AngleEvR = -x_r
     AngleEvR2 = np.square(AngleEvR)
 
@@ -298,7 +296,6 @@ def calculate(
              AngleEvR / 2.0 * (fk/r_r + fp_r * r_r))
 
     # ========== 5 THREE-POINT CORRELATION FUNCTION KERNELS (R-part) ==========
-    # Lines 644-654 in C code
     # Accumulate over mu (sum along axis 0)
     # Shapes after summation: (nquadSteps-2, Nk)
     wpsl_r = w_r * psl_r
@@ -322,34 +319,34 @@ def calculate(
         / (24.0 * y2_r)
     ), axis=0)
 
-    # I1udd1a: Line 644
+    # I1udd1a
     I1udd1a_B = np.sum(wpsl_r * (
         2.0 * r2_r * (1.0 - r_r * x_r) / y2_r * G2evR + 2.0 * fp_r * r_r * x_r * F2evR
     ), axis=0)
 
-    # I2uud1a: Line 646
+    # I2uud1a
     I2uud1a_B = np.sum(wpsl_r * (
         -fp_r * r2_r * (1.0 - x2_r) / y2_r * G2evR
     ), axis=0)
 
-    # I2uud2a: Lines 648-649
+    # I2uud2a
     I2uud2a_B = np.sum(wpsl_r * (
         ((r2_r * (1.0 - 3.0 * x2_r) + 2.0 * r_r * x_r) / y2_r * fp_r +
                 fk * 2.0 * r2_r * (1.0 - r_r * x_r) / y2_r) * G2evR + 2.0 * x_r * r_r * fp_r * fk * F2evR
     ), axis=0)
 
-    # I3uuu2a: Line 652
+    # I3uuu2a
     # Note this is similar to I2uud1a_B but with additional factor of fk inside the sum
     I3uuu2a_B = np.sum(wpsl_r * (
         -fp_r * r2_r * (1.0 - x2_r) / y2_r * G2evR * fk
     ), axis=0)
 
-    # I3uuu3a: Line 654
+    # I3uuu3a
     I3uuu3a_B = np.sum(wpsl_r * (
         (r2_r * (1.0 - 3.0 * x2_r) + 2.0 * r_r * x_r) / y2_r * fp_r * fk * G2evR
     ), axis=0)
 
-    # Calculate scaling for R-functions (line 699-707 in C)
+    # Calculate scaling for R-functions
     pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
     scale_R = logk_grid2 / (8.0 * np.pi ** 2) * pkl_k
 
@@ -375,7 +372,7 @@ def calculate(
     sigma32PSL = trapsumR(sigma32PSL_B)
 
     # ============================================================================
-    # Combine Q and R functions (line 717-721 in C)
+    # Combine Q and R functions
     # ============================================================================
     I1udd1A = I1udd1tA + 2.0 * I1udd1a
     I2uud1A = I2uud1tA + 2.0 * I2uud1a
@@ -385,19 +382,18 @@ def calculate(
 
     # ============================================================================
     # D-TERMS (B + C - G corrections)
-    # Lines 723-735 in C code
     # ============================================================================
     # Note: BpC terms already calculated from Q-functions above
     # Now apply G-corrections (sigma2v damping) to specific terms in-place
     fk_grid = fk  # Already normalized by f0
 
-    # I2uudd1D: Line 723-724 (subtract k^2 * sigma2v * P_L(k))
+    # I2uudd1D (subtract k^2 * sigma2v * P_L(k))
     I2uudd1BpC -= logk_grid2 * sigma2v * pkl_k
 
-    # I3uuud2D: Line 727-728 (subtract 2 * k^2 * sigma2v * f(k) * P_L(k))
+    # I3uuud2D (subtract 2 * k^2 * sigma2v * f(k) * P_L(k))
     I3uuud2BpC -= 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
 
-    # I4uuuu3D: Line 732-733 (subtract k^2 * sigma2v * f(k)^2 * P_L(k))
+    # I4uuuu3 (subtract k^2 * sigma2v * f(k)^2 * P_L(k))
     I4uuuu3BpC -= logk_grid2 * sigma2v * np.square(fk_grid) * pkl_k
 
     return KFunctionsOut(
