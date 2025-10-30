@@ -233,8 +233,8 @@ def calculate(
 
     # Apply trapezoidal rule with optimized operations
     def trapsumQ(B):
-        # Modify input array in-place for initial scaling
-        B *= scale_Q * PSLB
+        # Scale input array (in-place is slightly slower)
+        B = B * (scale_Q * PSLB)
         # Use fused trapezoidal sum (more efficient than cumsum approach)
         return np.sum((B[:-1] + B[1:]) * dkk_reshaped[1:], axis=0) + B[0] * dkk_reshaped[0]
 
@@ -354,8 +354,8 @@ def calculate(
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def trapsumR(B):
-        # Modify input array in-place for initial scaling
-        B *= scale_R
+        # Scale input array (in-place is slightly slower)
+        B = B * scale_R
         # Use fused trapezoidal sum (more efficient than cumsum approach)
         return np.sum((B[:-1] + B[1:]) * dkk_r[1:], axis=0) + B[0] * dkk_r[0]
 
