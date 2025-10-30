@@ -233,16 +233,12 @@ def calculate(
     # Calculate scaling for Q-functions (line 561-563, 565-569 in C)
     scale_Q = 0.25 * logk_grid2 / np.pi ** 2
 
-    # Apply trapezoidal rule with in-place operations to reduce memory allocations
+    # Apply trapezoidal rule with optimized operations
     def trapsumQ(B):
-        # First multiply creates a copy, then we can work in-place
-        B = B * scale_Q * PSLB
-        # Accumulate pairwise sums in-place (effectively B[i] += B[i-1] for i >= 1)
-        B[1:] += B[:-1]
-        # Multiply by step sizes in-place
-        B *= dkk_reshaped
-        # Sum all accumulated values
-        return np.sum(B, axis=0)
+        # Modify input array in-place for initial scaling
+        B *= scale_Q * PSLB
+        # Use fused trapezoidal sum (more efficient than cumsum approach)
+        return np.sum((B[:-1] + B[1:]) * dkk_reshaped[1:], axis=0) + B[0] * dkk_reshaped[0]
 
     P22dd = trapsumQ(P22dd_B)
     P22du = trapsumQ(P22du_B)
@@ -357,18 +353,14 @@ def calculate(
     pkl_k = np.vstack([Pout, Pout_nw])  # shape (2, Nk)
     scale_R = logk_grid2 / (8.0 * np.pi ** 2) * pkl_k
 
-    # Trapezoidal integration with in-place operations
+    # Trapezoidal integration with optimized operations
     dkk_r = dkk_reshaped[:-1].reshape(-1, 1, 1)
 
     def trapsumR(B):
-        # First multiply creates a copy, then we can work in-place
-        B = B * scale_R
-        # Accumulate pairwise sums in-place
-        B[1:] += B[:-1]
-        # Multiply by step sizes in-place
-        B *= dkk_r
-        # Sum all accumulated values
-        return np.sum(B, axis=0)
+        # Modify input array in-place for initial scaling
+        B *= scale_R
+        # Use fused trapezoidal sum (more efficient than cumsum approach)
+        return np.sum((B[:-1] + B[1:]) * dkk_r[1:], axis=0) + B[0] * dkk_r[0]
 
     I1udd1a = trapsumR(I1udd1a_B)
     I2uud1a = trapsumR(I2uud1a_B)
