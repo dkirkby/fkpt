@@ -4,7 +4,7 @@ import numpy as np
 
 from scipy.special import roots_legendre
 
-from fkpt.types import Float64NDArray, KFunctionsIn, KFunctionsInitData, KFunctionsOut, KFunctionsCalculator
+from fkpt.types import AbsCalculator, Float64NDArray, KFunctionsIn, KFunctionsInitData, KFunctionsOut, KFunctionsCalculator
 from fkpt.snapshot import KFunctionsSnapshot
 
 
@@ -126,19 +126,14 @@ def validate_kfunctions(
     return ok
 
 def measure_kfunctions(
-        calculator: KFunctionsCalculator,
+        calculator: AbsCalculator,
         snapshot: KFunctionsSnapshot,
         nruns: int = 10
         ) -> None:
     """Measure k-functions using the provided calculator and snapshot data."""
 
-    # Initialize k-functions input
+    # Prepare k-functions input
     k_in = snapshot.ps_wiggle.k
-    Pk_in = snapshot.ps_wiggle.P
-    Pk_nw_in = snapshot.ps_nowiggle.P
-    fk_in = snapshot.ps_wiggle.f
-    f0 = snapshot.cosmology.f0
-    sigma2v = snapshot.sigma_values.sigma2v
     kmin = snapshot.k_grid.kmin
     kmax = snapshot.k_grid.kmax
     Nk = snapshot.k_grid.Nk
@@ -147,15 +142,19 @@ def measure_kfunctions(
     NR = 10
 
     start_time = time.time()
-    kfuncs_in = init_kfunctions(
-        k_in, Pk_in, Pk_nw_in, fk_in,
-        f0,
-        kmin, kmax, Nk,
+    kfuncs_in = setup_kfunctions(
+        k_in, kmin, kmax, Nk,
         nquadSteps, NQ, NR
     )
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Initialized k-functions input in {1e3 * elapsed_time:.2f} ms")
+    print(f"setup_kfunctions in {1e3 * elapsed_time:.2f} ms")
+
+    start_time = time.time()
+    calculator.initialize(kfuncs_in)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"calculator.initialize in {1e3 * elapsed_time:.2f} ms")
 
     # kernel constants
     if False: # _KERNELS_LCDMfk_ on line 287
@@ -170,7 +169,16 @@ def measure_kfunctions(
         CFD3p = 1
 
     # Calculate k-functions first time to validate results and do any JIT initialization
-    kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v)
+    Pk_in = snapshot.ps_wiggle.P
+    Pk_nw_in = snapshot.ps_nowiggle.P
+    fk_in = snapshot.ps_wiggle.f
+    sigma2v = snapshot.sigma_values.sigma2v
+    f0 = snapshot.cosmology.f0
+    start_time = time.time()
+    kfuncs_out = calculator.evaluate(Pk_in, Pk_nw_in, fk_in, A, ApOverf0, CFD3, CFD3p, sigma2v, f0)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"First calculator.evaluate in {1e3 * elapsed_time:.2f} ms")
 
     # Validate results
     if validate_kfunctions(kfuncs_out, snapshot):
@@ -181,7 +189,7 @@ def measure_kfunctions(
     # Measure time for multiple evaluations
     start_time = time.time()
     for _ in range(nruns):
-        kfuncs_out = calculator(kfuncs_in, A, ApOverf0, CFD3, CFD3p, sigma2v)
+        kfuncs_out = calculator.evaluate(Pk_in, Pk_nw_in, fk_in, A, ApOverf0, CFD3, CFD3p, sigma2v, f0)
     end_time = time.time()
 
     elapsed_time = end_time - start_time

@@ -1,6 +1,6 @@
 from fkpt.snapshot import load_snapshot
 from fkpt.util import measure_kfunctions
-from fkpt.calculate_numpy import calculate as calculate_numpy
+from fkpt.calculate_numpy import NumpyCalculator
 from fkpt.calculate_jax import calculate as calculate_jax
 
 def main():
@@ -10,7 +10,8 @@ def main():
     snapshot = load_snapshot(SNAPSHOT_FILE)
 
     # Measure k-functions using available calculators
-    for calc_name, calculator in [('NumPy', calculate_numpy), ('JAX', calculate_jax)]:
+    #for calc_name, calculator in [('NumPy', calculate_numpy), ('JAX', calculate_jax)]:
+    for calc_name, calculator in [('NumPy', NumpyCalculator()), ]:
         print(f"\nMeasuring k-functions using {calc_name} calculator:")
         measure_kfunctions(calculator, snapshot, nruns=100)
 

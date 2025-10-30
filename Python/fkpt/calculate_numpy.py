@@ -75,13 +75,13 @@ class NumpyCalculator(AbsCalculator):
             CFD3: Cosmological parameter CFD3
             CFD3p: Cosmological parameter CFD3p
             sigma2v: Velocity dispersion parameter
-            f0: Reference growth rate (currently unused, kept for interface compatibility)
+            f0: Reference growth rate
 
         Returns:
             KFunctionsOut containing all computed k-functions
         """
         # Stack input power spectra for interpolation
-        Y = np.stack([Pk_in, Pk_nw_in, fk_in], axis=0)  # shape (3, n_k_in)
+        Y = np.stack([Pk_in, Pk_nw_in, fk_in / f0], axis=0)  # shape (3, n_k_in)
 
         # Use instance variables for grid data
         k_in = self.k_in
