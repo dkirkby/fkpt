@@ -396,17 +396,17 @@ def calculate(
     # Lines 723-735 in C code
     # ============================================================================
     # Note: BpC terms already calculated from Q-functions above
-    # Now apply G-corrections (sigma2v damping) to specific terms
+    # Now apply G-corrections (sigma2v damping) to specific terms in-place
     fk_grid = fk  # Already normalized by f0
 
     # I2uudd1D: Line 723-724 (subtract k^2 * sigma2v * P_L(k))
-    I2uudd1BpC = I2uudd1BpC - logk_grid2 * sigma2v * pkl_k
+    I2uudd1BpC -= logk_grid2 * sigma2v * pkl_k
 
     # I3uuud2D: Line 727-728 (subtract 2 * k^2 * sigma2v * f(k) * P_L(k))
-    I3uuud2BpC = I3uuud2BpC - 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
+    I3uuud2BpC -= 2.0 * logk_grid2 * sigma2v * fk_grid * pkl_k
 
     # I4uuuu3D: Line 732-733 (subtract k^2 * sigma2v * f(k)^2 * P_L(k))
-    I4uuuu3BpC = I4uuuu3BpC - logk_grid2 * sigma2v * np.square(fk_grid) * pkl_k
+    I4uuuu3BpC -= logk_grid2 * sigma2v * np.square(fk_grid) * pkl_k
 
     return KFunctionsOut(
         P22dd, P22du, P22uu,
